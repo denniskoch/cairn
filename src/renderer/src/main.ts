@@ -6,6 +6,7 @@ import '@xterm/xterm/css/xterm.css'
 import './style.css'
 import '../../shared/ipc'
 import { XtermScreen } from '../screen'
+import { KeybindDispatcher } from '../keybind'
 
 const term = new Terminal({
   fontFamily: '"JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace',
@@ -158,37 +159,67 @@ function runScreenDemo(): Promise<void> {
     // cursor positioning overwrites whatever is still on screen from the
     // scrollback (folders list, message preview, etc.).
     term.write('\x1b[2J\x1b[H')
+
     const screen = new XtermScreen(term)
-    screen.clear()
-    screen.text(1, 2, 'Cairn — screen abstraction demo', { bold: true })
-    screen.text(3, 2, 'Cell-based draw primitives:')
-    screen.text(5, 4, 'Plain text')
-    screen.text(6, 4, 'Bold text', { bold: true })
-    screen.text(7, 4, 'Underlined text', { underline: true })
-    screen.text(8, 4, 'Inverse text', { inverse: true })
-    screen.text(9, 4, 'Foreground color', { fg: 'cyan' })
-    screen.text(10, 4, 'On a background', { fg: 'black', bg: 'yellow' })
-    screen.text(12, 2, 'Press Q to dismiss.')
+    const dispatcher = new KeybindDispatcher(term)
+    let lastKeyMessage = ''
 
-    screen.statusBar([
-      [
-        { key: '?', label: 'Help' },
-        { key: 'Q', label: 'Dismiss' },
-      ],
-      [
-        { key: '↑↓', label: 'Navigate' },
-        { key: 'O', label: 'Other' },
-      ],
-    ])
-    screen.flush()
+    function draw(): void {
+      screen.clear()
+      screen.text(1, 2, 'Cairn — screen + keybind demo', { bold: true })
+      screen.text(3, 2, 'Cell-based draw primitives:')
+      screen.text(5, 4, 'Plain text')
+      screen.text(6, 4, 'Bold text', { bold: true })
+      screen.text(7, 4, 'Underlined text', { underline: true })
+      screen.text(8, 4, 'Inverse text', { inverse: true })
+      screen.text(9, 4, 'Foreground color', { fg: 'cyan' })
+      screen.text(10, 4, 'On a background', { fg: 'black', bg: 'yellow' })
 
-    const disposable = term.onKey(({ domEvent }) => {
-      if (domEvent.key !== 'Q' && domEvent.key !== 'q') return
-      disposable.dispose()
+      screen.text(12, 2, 'Try: ? for help, ↑↓ or j/k to navigate, O for other.')
+      screen.text(13, 2, 'Press Q to dismiss.')
+
+      if (lastKeyMessage) {
+        screen.text(15, 2, lastKeyMessage, { fg: 'green' })
+      }
+
+      screen.statusBar([
+        [
+          { key: '?', label: 'Help' },
+          { key: 'Q', label: 'Dismiss' },
+        ],
+        [
+          { key: '↑↓', label: 'Navigate' },
+          { key: 'O', label: 'Other' },
+        ],
+      ])
+      screen.flush()
+    }
+
+    function show(msg: string): void {
+      lastKeyMessage = msg
+      draw()
+    }
+
+    const dismiss = (): void => {
+      dispatcher.pop()
       term.write('\x1b[2J\x1b[H')
-      term.writeln('Step 9 OK — screen abstraction dismissed.')
+      term.writeln('Step 10 OK — dispatcher dismissed.')
       resolve()
+    }
+
+    dispatcher.push({
+      Q: dismiss,
+      q: dismiss,
+      '?': () => show('help: not yet implemented'),
+      Up: () => show('navigate: up (Up)'),
+      k: () => show('navigate: up (k)'),
+      Down: () => show('navigate: down (Down)'),
+      j: () => show('navigate: down (j)'),
+      O: () => show('other: not yet implemented'),
     })
+
+    dispatcher.start()
+    draw()
   })
 }
 
