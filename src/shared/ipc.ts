@@ -31,6 +31,7 @@ export interface CairnApi {
     start(): Promise<{ email: string }>
     status(): Promise<AuthStatus>
     signOut(): Promise<void>
+    onExpired(cb: () => void): () => void
   }
   mail: {
     listFolders(): Promise<Folder[]>

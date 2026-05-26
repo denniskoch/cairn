@@ -15,6 +15,13 @@ const api: CairnApi = {
     start: () => ipcRenderer.invoke('cairn:auth:start'),
     status: () => ipcRenderer.invoke('cairn:auth:status'),
     signOut: () => ipcRenderer.invoke('cairn:auth:signOut'),
+    onExpired: (cb) => {
+      const handler = (): void => cb()
+      ipcRenderer.on('cairn:auth:expired', handler)
+      return () => {
+        ipcRenderer.off('cairn:auth:expired', handler)
+      }
+    },
   },
   mail: {
     listFolders: () => ipcRenderer.invoke('cairn:mail:listFolders'),

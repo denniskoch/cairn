@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openDatabase } from './db'
 import {
+  authEvents,
   initAuth,
   startInteractive,
   getStatus,
@@ -212,6 +213,16 @@ app.whenReady().then(async () => {
     await initAuth(db)
     const accountId = getCurrentAccountId()
     if (accountId) initMailLayer(accountId)
+
+    // Forward auth-expired events from the msal layer to the renderer, so
+    // it can push a re-auth screen instead of the user staring at a stack
+    // of AUTH_EXPIRED error banners.
+    authEvents.on('expired', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('cairn:auth:expired')
+      }
+    })
+
     createWindow()
   } catch (err) {
     console.error('Cairn failed to start:', err)

@@ -7,8 +7,14 @@ import {
 } from '@azure/msal-node'
 import { shell, safeStorage } from 'electron'
 import { randomUUID } from 'node:crypto'
+import { EventEmitter } from 'node:events'
 import type Database from 'better-sqlite3'
 import { authConfig, authority } from './config'
+
+/** Module-level event emitter. Fires 'expired' when the refresh token is
+ * detected as permanently bad and the stored session is cleared. Main
+ * subscribes to forward to the renderer so it can prompt for re-auth. */
+export const authEvents = new EventEmitter()
 
 let db: Database.Database | null = null
 let pca: PublicClientApplication | null = null
@@ -199,6 +205,7 @@ export async function getAccessToken(): Promise<string> {
       db.prepare('DELETE FROM accounts WHERE id = ?').run(currentAccountId)
       currentAccount = null
       currentAccountId = null
+      authEvents.emit('expired')
     }
     throw err
   }

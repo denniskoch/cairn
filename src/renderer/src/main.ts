@@ -7,7 +7,7 @@ import './style.css'
 import '../../shared/ipc'
 import { XtermSurface } from '../surface'
 import { KeybindDispatcher } from '../keybind'
-import { HelpScreen, MainMenuScreen, Router } from '../screens'
+import { HelpScreen, MainMenuScreen, ReAuthScreen, Router } from '../screens'
 import { CLASSIC, resolveTheme } from '../themes'
 
 const term = new Terminal({
@@ -135,6 +135,14 @@ async function bootstrap(): Promise<void> {
       }
       void router.push(new HelpScreen(info))
     },
+  })
+
+  // If the refresh token goes bad mid-session, msal emits 'expired' which
+  // main forwards as cairn:auth:expired. Push a ReAuthScreen on top of
+  // whatever the user was doing — underlying screen stays put underneath
+  // so popping returns them there once they've signed back in.
+  window.cairn.auth.onExpired(() => {
+    void router.push(new ReAuthScreen())
   })
 
   dispatcher.start()
