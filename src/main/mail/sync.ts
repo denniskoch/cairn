@@ -4,7 +4,7 @@ import type { MailCache } from './cache'
 import type { GetTokenFn } from './graph-http'
 import { fetchFolders, fetchMessagesWindow } from './graph-fetch'
 
-const INITIAL_BOOTSTRAP_CAP = 500
+const INITIAL_BOOTSTRAP_CAP = 200
 const INBOX_INTERVAL_MS = 30_000
 
 export type SyncEventName = 'mail'
@@ -48,6 +48,23 @@ export class SyncScheduler {
         unreadCount: f.unreadCount,
         totalCount: f.totalCount,
       })
+    }
+  }
+
+  /** Fetches just a single page so the renderer can show something fast.
+   * Does NOT set the high-water mark — the periodic poller must not think
+   * we're caught up after just one page. Callers typically follow up by
+   * kicking initialSync() in the background to continue the bootstrap. */
+  async firstPage(folderId: string, limit: number): Promise<void> {
+    if (this.inflight.has(folderId)) return
+    this.inflight.add(folderId)
+    try {
+      const result = await fetchMessagesWindow(this.getToken, folderId, { limit })
+      for (const m of result.messages) {
+        this.cache.upsertMessageHeader(folderId, m)
+      }
+    } finally {
+      this.inflight.delete(folderId)
     }
   }
 

@@ -55,7 +55,13 @@ export class GraphProvider implements MailProvider {
     opts: ListOpts,
   ): Promise<{ messages: MessageHeader[]; nextCursor?: string }> {
     if (!this.cache.hasMessages(folder)) {
-      await this.sync.initialSync(folder)
+      // Block only on the first page (one Graph round-trip) so the
+      // renderer can show something fast. The rest of the bootstrap
+      // continues in the background up to INITIAL_BOOTSTRAP_CAP.
+      await this.sync.firstPage(folder, opts.limit ?? 50)
+      this.sync.initialSync(folder).catch((err) => {
+        console.warn('sync: background bootstrap failed:', err)
+      })
     } else {
       this.sync.refreshFolder(folder).catch((err) => {
         console.warn('sync: folder refresh failed:', err)
