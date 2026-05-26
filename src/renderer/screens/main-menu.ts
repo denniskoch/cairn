@@ -3,8 +3,9 @@ import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
 import { ComposeScreen } from './compose'
 import { FolderlistScreen } from './folderlist'
+import { HelpScreen } from './help'
 import { IndexScreen } from './index-screen'
-import type { Screen, ScreenContext } from './types'
+import type { HelpInfo, Screen, ScreenContext } from './types'
 
 const APP_TITLE = 'CAIRN α'
 
@@ -20,7 +21,7 @@ const OPTIONS: MenuOption[] = [
     key: '?',
     label: 'HELP',
     desc: 'Get help using Cairn',
-    action: (self) => self.notImplemented('Help'),
+    action: (self) => self.openHelp(),
   },
   {
     key: 'C',
@@ -119,6 +120,11 @@ export class MainMenuScreen implements Screen {
   openFolderList(): void {
     if (!this.ctx) return
     void this.ctx.router.push(new FolderlistScreen())
+  }
+
+  openHelp(): void {
+    if (!this.ctx) return
+    void this.ctx.router.push(new HelpScreen(this.helpInfo()))
   }
 
   notImplemented(name: string): void {
@@ -282,13 +288,29 @@ export class MainMenuScreen implements Screen {
       N: down,
       Enter: () => this.activateCurrent(),
       // Direct-key shortcuts: pressing the letter activates that option.
-      '?': () => this.invokeKey('?'),
       C: () => this.invokeKey('C'),
       I: () => this.invokeKey('I'),
       L: () => this.invokeKey('L'),
       A: () => this.invokeKey('A'),
       S: () => this.invokeKey('S'),
       Q: () => this.invokeKey('Q'),
+    }
+  }
+
+  helpInfo(): HelpInfo {
+    return {
+      title: 'Main menu',
+      entries: [
+        { key: '?', description: 'Show help' },
+        { key: 'C', description: 'Compose a new message' },
+        { key: 'I', description: 'View messages in current folder' },
+        { key: 'L', description: 'Select a folder to view' },
+        { key: 'A', description: 'Address book (not yet implemented)' },
+        { key: 'S', description: 'Setup (not yet implemented)' },
+        { key: 'Q', description: 'Quit Cairn' },
+        { key: '↑ ↓ / j k / N P', description: 'Move cursor between options' },
+        { key: 'Enter', description: 'Activate the highlighted option' },
+      ],
     }
   }
 }

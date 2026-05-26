@@ -28,6 +28,10 @@ export class Router {
     return this.stack.length > 1
   }
 
+  currentScreen(): Screen | null {
+    return this.stack[this.stack.length - 1] ?? null
+  }
+
   async push(screen: Screen): Promise<void> {
     this.stack.push(screen)
     await screen.enter?.(this.context)

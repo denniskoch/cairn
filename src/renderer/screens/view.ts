@@ -2,7 +2,7 @@ import type { Message, MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
 import { ComposeScreen, type ReplyKind } from './compose'
-import type { Screen, ScreenContext } from './types'
+import type { HelpInfo, Screen, ScreenContext } from './types'
 
 const BRIEF_HEADERS = ['Date', 'From', 'To', 'Cc', 'Subject']
 
@@ -262,6 +262,25 @@ export class ViewScreen implements Screen {
         userEmail,
       }),
     )
+  }
+
+  helpInfo(): HelpInfo {
+    return {
+      title: 'View message',
+      entries: [
+        { key: 'Space / PgDn', description: 'Page down through body' },
+        { key: 'b / PgUp', description: 'Page up through body' },
+        { key: '↑ ↓', description: 'Line scroll body' },
+        { key: 'N', description: 'Next message in folder' },
+        { key: 'P', description: 'Previous message in folder' },
+        { key: 'R', description: 'Reply to sender' },
+        { key: 'A', description: 'Reply to all recipients' },
+        { key: 'F', description: 'Forward this message' },
+        { key: 'H', description: 'Toggle brief / full headers' },
+        { key: 'Q', description: 'Back to message index' },
+        { key: '?', description: 'Show this help' },
+      ],
+    }
   }
 }
 

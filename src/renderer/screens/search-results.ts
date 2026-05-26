@@ -1,6 +1,6 @@
 import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
-import type { Screen, ScreenContext } from './types'
+import type { HelpInfo, Screen, ScreenContext } from './types'
 import { ViewScreen } from './view'
 
 export class SearchResultsScreen implements Screen {
@@ -125,6 +125,18 @@ export class SearchResultsScreen implements Screen {
           }),
         )
       },
+    }
+  }
+
+  helpInfo(): HelpInfo {
+    return {
+      title: `Search results — "${this.query}"`,
+      entries: [
+        { key: '↑ ↓ / j k', description: 'Move cursor between results' },
+        { key: 'Enter', description: 'Open the highlighted message' },
+        { key: 'Q', description: 'Back to message index' },
+        { key: '?', description: 'Show this help' },
+      ],
     }
   }
 }

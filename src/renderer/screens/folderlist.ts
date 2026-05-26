@@ -2,7 +2,7 @@ import type { Folder } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import { ComposeScreen } from './compose'
 import { IndexScreen } from './index-screen'
-import type { Screen, ScreenContext } from './types'
+import type { HelpInfo, Screen, ScreenContext } from './types'
 
 export class FolderlistScreen implements Screen {
   private folders: Folder[] = []
@@ -136,6 +136,20 @@ export class FolderlistScreen implements Screen {
   /** Public so the renderer can re-trigger on mail:new events. */
   async refresh(): Promise<void> {
     await this.loadFolders()
+  }
+
+  helpInfo(): HelpInfo {
+    return {
+      title: 'Folder list',
+      entries: [
+        { key: '↑ ↓ / j k / N P', description: 'Move cursor between folders' },
+        { key: 'Enter', description: 'Open the highlighted folder' },
+        { key: 'L', description: 'Refresh folder list from the server' },
+        { key: 'C', description: 'Compose a new message' },
+        { key: 'Q', description: 'Back to main menu (quit if standalone)' },
+        { key: '?', description: 'Show this help' },
+      ],
+    }
   }
 }
 

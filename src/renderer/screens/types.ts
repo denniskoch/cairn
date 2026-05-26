@@ -1,6 +1,16 @@
 import type { KeyMap, KeybindDispatcher } from '../keybind'
 import type { Surface } from '../surface'
 
+export interface HelpEntry {
+  key: string
+  description: string
+}
+
+export interface HelpInfo {
+  title: string
+  entries: HelpEntry[]
+}
+
 export interface ScreenContext {
   readonly surface: Surface
   readonly dispatcher: KeybindDispatcher
@@ -12,6 +22,9 @@ export interface ScreenContext {
     /** True when the stack has more than one screen — i.e., pop would
      * reveal a previous screen rather than leave the stack empty. */
     canPop(): boolean
+    /** Top of the screen stack. Used by the global ? handler to look up
+     * the active screen's helpInfo. */
+    currentScreen(): Screen | null
   }
   invalidate(): void
   /** Subscribe to typed text that the dispatcher didn't claim. Used by
@@ -30,4 +43,7 @@ export interface Screen {
   render(): void
   /** Keymap to push onto the dispatcher while this screen is active. */
   keymap(): KeyMap
+  /** Optional help content shown when the user presses ?. Screens that
+   * don't define this just get a generic "no help available" screen. */
+  helpInfo?(): HelpInfo
 }

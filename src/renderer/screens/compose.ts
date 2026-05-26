@@ -1,7 +1,7 @@
 import type { Address, Draft, Message } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
-import type { Screen, ScreenContext } from './types'
+import type { HelpInfo, Screen, ScreenContext } from './types'
 
 type Field = 'to' | 'cc' | 'subject' | 'body'
 
@@ -469,6 +469,26 @@ export class ComposeScreen implements Screen {
       'Ctrl+X': () => this.send(),
       'Ctrl+O': () => this.saveDraft(),
       'Ctrl+C': () => this.cancel(),
+    }
+  }
+
+  helpInfo(): HelpInfo {
+    return {
+      title: 'Compose',
+      entries: [
+        { key: 'Tab', description: 'Cycle to next field (To → Cc → Subject → Body)' },
+        { key: 'Enter', description: 'New line in body, or next field in header' },
+        { key: '↑ ↓ ← →', description: 'Move cursor in body' },
+        { key: 'Backspace / Delete', description: 'Edit text' },
+        { key: 'Home / End', description: 'Jump to start / end of line' },
+        { key: '^X', description: 'Send message' },
+        { key: '^O', description: 'Save as draft' },
+        { key: '^C', description: 'Cancel (return without sending)' },
+        { key: '^K / ^U', description: 'Cut line / Uncut (not yet implemented)' },
+        { key: '^J', description: 'Justify paragraph (not yet implemented)' },
+        { key: '^W', description: 'Where is — search buffer (not yet implemented)' },
+        { key: '^R', description: 'Read file as attachment (not yet implemented)' },
+      ],
     }
   }
 }

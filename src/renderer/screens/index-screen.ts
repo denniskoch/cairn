@@ -2,7 +2,7 @@ import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import { ComposeScreen } from './compose'
 import { SearchResultsScreen } from './search-results'
-import type { Screen, ScreenContext } from './types'
+import type { HelpInfo, Screen, ScreenContext } from './types'
 import { ViewScreen } from './view'
 
 const FETCH_LIMIT = 100
@@ -318,6 +318,21 @@ export class IndexScreen implements Screen {
         }
       },
       '/': () => this.enterSearchMode(),
+    }
+  }
+
+  helpInfo(): HelpInfo {
+    return {
+      title: `Message index (${this.folderName})`,
+      entries: [
+        { key: '↑ ↓ / j k', description: 'Move cursor between messages' },
+        { key: 'Enter', description: 'Open the highlighted message' },
+        { key: 'U', description: 'Toggle read / unread state' },
+        { key: 'C', description: 'Compose a new message' },
+        { key: '/', description: 'Search across all folders' },
+        { key: 'Q', description: 'Back to folder list' },
+        { key: '?', description: 'Show this help' },
+      ],
     }
   }
 }

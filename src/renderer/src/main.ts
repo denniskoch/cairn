@@ -7,7 +7,7 @@ import './style.css'
 import '../../shared/ipc'
 import { XtermSurface } from '../surface'
 import { KeybindDispatcher } from '../keybind'
-import { MainMenuScreen, Router } from '../screens'
+import { HelpScreen, MainMenuScreen, Router } from '../screens'
 
 const term = new Terminal({
   fontFamily: '"JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace',
@@ -106,6 +106,24 @@ async function bootstrap(): Promise<void> {
   const surface = new XtermSurface(term)
   const dispatcher = new KeybindDispatcher(term)
   const router = new Router(surface, dispatcher, term)
+
+  // Global ? opens context-sensitive help for whichever screen is on top.
+  // Each screen exposes helpInfo() with its own keybinds; HelpScreen renders
+  // those. Screens that don't define helpInfo (HelpScreen itself, for
+  // example, defines a meta-help) just get a generic empty list.
+  dispatcher.setGlobal({
+    '?': () => {
+      const top = router.currentScreen()
+      const info = top?.helpInfo?.() ?? {
+        title: 'Cairn',
+        entries: [
+          { key: '?', description: 'Show context-sensitive help' },
+          { key: 'Q', description: 'Back / quit' },
+        ],
+      }
+      void router.push(new HelpScreen(info))
+    },
+  })
 
   dispatcher.start()
   await router.push(new MainMenuScreen())
