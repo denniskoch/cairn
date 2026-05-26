@@ -5,6 +5,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import './style.css'
 import '../../shared/ipc'
+import { XtermScreen } from '../screen'
 
 const term = new Terminal({
   fontFamily: '"JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace',
@@ -151,6 +152,46 @@ async function setupAuthUi(): Promise<void> {
   })
 }
 
+function runScreenDemo(): Promise<void> {
+  return new Promise((resolve) => {
+    // Clear the visible viewport first — without this, the demo's absolute
+    // cursor positioning overwrites whatever is still on screen from the
+    // scrollback (folders list, message preview, etc.).
+    term.write('\x1b[2J\x1b[H')
+    const screen = new XtermScreen(term)
+    screen.clear()
+    screen.text(1, 2, 'Cairn — screen abstraction demo', { bold: true })
+    screen.text(3, 2, 'Cell-based draw primitives:')
+    screen.text(5, 4, 'Plain text')
+    screen.text(6, 4, 'Bold text', { bold: true })
+    screen.text(7, 4, 'Underlined text', { underline: true })
+    screen.text(8, 4, 'Inverse text', { inverse: true })
+    screen.text(9, 4, 'Foreground color', { fg: 'cyan' })
+    screen.text(10, 4, 'On a background', { fg: 'black', bg: 'yellow' })
+    screen.text(12, 2, 'Press Q to dismiss.')
+
+    screen.statusBar([
+      [
+        { key: '?', label: 'Help' },
+        { key: 'Q', label: 'Dismiss' },
+      ],
+      [
+        { key: '↑↓', label: 'Navigate' },
+        { key: 'O', label: 'Other' },
+      ],
+    ])
+    screen.flush()
+
+    const disposable = term.onKey(({ domEvent }) => {
+      if (domEvent.key !== 'Q' && domEvent.key !== 'q') return
+      disposable.dispose()
+      term.write('\x1b[2J\x1b[H')
+      term.writeln('Step 9 OK — screen abstraction dismissed.')
+      resolve()
+    })
+  })
+}
+
 void (async () => {
   term.writeln('Cairn — pre-alpha')
   term.writeln('')
@@ -169,4 +210,9 @@ void (async () => {
 
   term.writeln('Auth status...')
   await setupAuthUi()
+
+  term.writeln('')
+  term.writeln('Launching screen abstraction demo in 2 seconds...')
+  await new Promise((r) => setTimeout(r, 2000))
+  await runScreenDemo()
 })()
