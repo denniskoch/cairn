@@ -1,6 +1,7 @@
 import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Screen, ScreenContext } from './types'
+import { ViewScreen } from './view'
 
 const FETCH_LIMIT = 100
 
@@ -164,9 +165,14 @@ export class IndexScreen implements Screen {
         void this.ctx?.router.pop()
       },
       Enter: () => {
-        // view screen lands in step 13. For now just no-op so we don't
-        // wedge the user — they can still see something happened (status
-        // is unchanged).
+        const m = this.messages[this.cursor]
+        if (!m || !this.ctx) return
+        void this.ctx.router.push(
+          new ViewScreen(m.id, {
+            messages: this.messages,
+            index: this.cursor,
+          }),
+        )
       },
       U: async () => {
         const m = this.messages[this.cursor]

@@ -64,38 +64,30 @@ export class CellGrid {
     }
   }
 
-  diff(prev: CellGrid): string {
-    let out = ''
-    let lastRow = -2
-    let lastCol = -2
+  /** Emit ANSI for every cell, full redraw. Was originally a diff against
+   * `prev`, but stale cells were leaking across screen transitions in ways
+   * the diff didn't catch. At 80×24 = 1920 cells per flush the cost is
+   * trivial; correctness wins. The `prev` parameter is kept on the API for
+   * compatibility with `XtermSurface.flush` but is no longer consulted. */
+  diff(_prev: CellGrid): string {
+    let body = ''
     let lastAttrs: Attrs | null = null
 
     for (let row = 0; row < this.rows; row++) {
+      body += `\x1b[${row + 1};1H`
+      lastAttrs = null
       for (let col = 0; col < this.cols; col++) {
-        const i = row * this.cols + col
-        const a = prev.data[i]
-        const b = this.data[i]
-        if (a && a.char === b.char && attrsEqual(a.attrs, b.attrs)) continue
-
-        if (row !== lastRow || col !== lastCol + 1) {
-          // ANSI cursor pos is 1-indexed.
-          out += `\x1b[${row + 1};${col + 1}H`
+        const cell = this.data[row * this.cols + col]
+        if (!lastAttrs || !attrsEqual(lastAttrs, cell.attrs)) {
+          body += attrsToAnsi(cell.attrs)
+          lastAttrs = cell.attrs
         }
-        if (!lastAttrs || !attrsEqual(lastAttrs, b.attrs)) {
-          out += attrsToAnsi(b.attrs)
-          lastAttrs = b.attrs
-        }
-        out += b.char
-        lastRow = row
-        lastCol = col
+        body += cell.char
       }
     }
 
-    if (out.length > 0) {
-      // Reset attrs after the final write so subsequent terminal output
-      // doesn't inherit whatever the last cell had set.
-      out += '\x1b[0m'
-    }
-    return out
+    // \x1b[?7l disables autowrap so writing the bottom-right cell doesn't
+    // make xterm scroll the buffer up. \x1b[0m at the end resets attrs.
+    return `\x1b[?7l${body}\x1b[0m`
   }
 }
