@@ -19,6 +19,9 @@ export type AuthStatus = {
 
 export interface CairnApi {
   ping(): Promise<'pong'>
+  app: {
+    quit(): Promise<void>
+  }
   prefs: {
     get(key: string): Promise<string | null>
     set(key: string, value: string): Promise<void>

@@ -4,6 +4,9 @@ import type { MailEvent } from '../shared/mail'
 
 const api: CairnApi = {
   ping: () => ipcRenderer.invoke('cairn:ping'),
+  app: {
+    quit: () => ipcRenderer.invoke('cairn:app:quit'),
+  },
   prefs: {
     get: (key) => ipcRenderer.invoke('cairn:prefs:get', key),
     set: (key, value) => ipcRenderer.invoke('cairn:prefs:set', key, value),

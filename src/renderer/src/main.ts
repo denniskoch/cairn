@@ -7,11 +7,12 @@ import './style.css'
 import '../../shared/ipc'
 import { XtermSurface } from '../surface'
 import { KeybindDispatcher } from '../keybind'
+import { FolderlistScreen, Router } from '../screens'
 
 const term = new Terminal({
   fontFamily: '"JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace',
   fontSize: 14,
-  cursorBlink: true,
+  cursorBlink: false,
   theme: {
     background: '#000000',
     foreground: '#33ff33',
@@ -36,214 +37,76 @@ try {
 fit.fit()
 window.addEventListener('resize', () => fit.fit())
 
-let isAuthenticating = false
-let mailEventsBound = false
+function clearViewport(): void {
+  term.write('\x1b[2J\x1b[H')
+}
 
-function subscribeMailEvents(): void {
-  if (mailEventsBound) return
-  mailEventsBound = true
-  window.cairn.mail.onEvent((event) => {
-    if (event.type === 'new') {
-      const from = event.message.from.name ?? event.message.from.email
-      term.writeln(
-        `\x1b[33m[NEW]\x1b[0m ${from.slice(0, 25).padEnd(25)} ${event.message.subject.slice(0, 60)}`,
-      )
-    }
+function waitForKey(predicate: (e: KeyboardEvent) => boolean): Promise<void> {
+  return new Promise((resolve) => {
+    const handler = term.onKey(({ domEvent }) => {
+      if (!predicate(domEvent)) return
+      handler.dispose()
+      resolve()
+    })
   })
 }
 
-async function loadMailDemo(): Promise<void> {
+async function runInteractiveAuth(): Promise<{ email: string } | { error: string }> {
+  clearViewport()
+  term.writeln('Cairn — sign in to Microsoft to continue.')
   term.writeln('')
-  term.writeln('Loading folders...')
+  term.writeln('Press \x1b[1mA\x1b[0m to authenticate.')
+
+  await waitForKey((e) => e.key === 'A' || e.key === 'a')
+
+  term.writeln('')
+  term.writeln('Opening browser...')
   try {
-    const folders = await window.cairn.mail.listFolders()
-    term.writeln(`${folders.length} folders:`)
-    for (const f of folders.slice(0, 10)) {
-      term.writeln(
-        `  ${f.name.slice(0, 25).padEnd(25)} unread: ${f.unreadCount}, total: ${f.totalCount}`,
-      )
-    }
-    if (folders.length > 10) {
-      term.writeln(`  ...and ${folders.length - 10} more`)
-    }
-
-    term.writeln('')
-    term.writeln('Inbox preview (latest 5):')
-    const { messages } = await window.cairn.mail.listMessages('inbox', { limit: 5 })
-    if (messages.length === 0) {
-      term.writeln('  (empty)')
-      return
-    }
-    for (const m of messages) {
-      const from = m.from.name ?? m.from.email
-      const dot = m.flags.read ? ' ' : '*'
-      const date =
-        m.receivedAt instanceof Date ? m.receivedAt.toISOString().slice(0, 10) : ''
-      term.writeln(
-        `  ${dot} ${date} ${from.slice(0, 25).padEnd(25)} ${m.subject.slice(0, 60)}`,
-      )
-    }
-
-    term.writeln('')
-    term.writeln(`Fetching full message: ${messages[0].subject.slice(0, 50)}...`)
-    const full = await window.cairn.mail.getMessage(messages[0].id)
-    term.writeln('')
-    term.writeln(`  From:    ${full.from.name ?? full.from.email}`)
-    const toLine = full.to.map((a) => a.name ?? a.email).join(', ')
-    term.writeln(`  To:      ${toLine.slice(0, 80)}`)
-    term.writeln(`  Subject: ${full.subject}`)
-    const recv =
-      full.receivedAt instanceof Date ? full.receivedAt.toISOString() : ''
-    term.writeln(`  Date:    ${recv}`)
-    if (full.attachments.length > 0) {
-      term.writeln(
-        `  Attach:  ${full.attachments
-          .map((a) => `${a.name} (${a.contentType}, ${a.sizeBytes}b)`)
-          .join(', ')}`,
-      )
-    }
-    term.writeln('')
-    term.writeln('--- body (first 500 chars) ---')
-    const snippet = full.bodyText.slice(0, 500)
-    for (const line of snippet.split(/\r?\n/)) {
-      term.writeln(line)
-    }
-    if (full.bodyText.length > 500) {
-      term.writeln(`... (${full.bodyText.length - 500} more chars)`)
-    }
+    return await window.cairn.auth.start()
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    term.writeln(`\x1b[31mLoading mail failed: ${msg}\x1b[0m`)
+    return { error: err instanceof Error ? err.message : String(err) }
   }
 }
 
-async function setupAuthUi(): Promise<void> {
+async function bootstrap(): Promise<void> {
   const status = await window.cairn.auth.status()
 
   if (!status.encryptionAvailable) {
-    term.writeln('\x1b[31mERROR: OS keychain encryption unavailable.\x1b[0m')
-    term.writeln('Cannot store auth tokens. On Linux, install libsecret.')
+    clearViewport()
+    term.writeln('\x1b[31mERROR: OS keychain encryption is unavailable.\x1b[0m')
+    term.writeln('Cairn cannot store auth tokens.')
+    term.writeln('On Linux, install libsecret. Cairn will not proceed.')
     return
   }
 
-  if (status.authenticated && status.email) {
-    term.writeln(`Signed in as: \x1b[1m${status.email}\x1b[0m`)
-    subscribeMailEvents()
-    await loadMailDemo()
-    return
-  }
-
-  term.writeln('Press \x1b[1mA\x1b[0m to authenticate with Microsoft.')
-
-  term.onKey(async ({ domEvent }) => {
-    if (isAuthenticating) return
-    if (domEvent.key !== 'A' && domEvent.key !== 'a') return
-    isAuthenticating = true
-    term.writeln('Opening browser for sign-in...')
-    try {
-      const result = await window.cairn.auth.start()
-      term.writeln(`Signed in as: \x1b[1m${result.email}\x1b[0m`)
-      subscribeMailEvents()
-      await loadMailDemo()
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      term.writeln(`\x1b[31mSign-in failed: ${msg}\x1b[0m`)
-      isAuthenticating = false
-    }
-  })
-}
-
-function runSurfaceDemo(): Promise<void> {
-  return new Promise((resolve) => {
-    // Clear the visible viewport first — without this, the demo's absolute
-    // cursor positioning overwrites whatever is still on screen from the
-    // scrollback (folders list, message preview, etc.).
-    term.write('\x1b[2J\x1b[H')
-
-    const surface = new XtermSurface(term)
-    const dispatcher = new KeybindDispatcher(term)
-    let lastKeyMessage = ''
-
-    function draw(): void {
-      surface.clear()
-      surface.text(1, 2, 'Cairn — surface + keybind demo', { bold: true })
-      surface.text(3, 2, 'Cell-based draw primitives:')
-      surface.text(5, 4, 'Plain text')
-      surface.text(6, 4, 'Bold text', { bold: true })
-      surface.text(7, 4, 'Underlined text', { underline: true })
-      surface.text(8, 4, 'Inverse text', { inverse: true })
-      surface.text(9, 4, 'Foreground color', { fg: 'cyan' })
-      surface.text(10, 4, 'On a background', { fg: 'black', bg: 'yellow' })
-
-      surface.text(12, 2, 'Try: ? for help, ↑↓ or j/k to navigate, O for other.')
-      surface.text(13, 2, 'Press Q to dismiss.')
-
-      if (lastKeyMessage) {
-        surface.text(15, 2, lastKeyMessage, { fg: 'green' })
+  let email = status.email
+  if (!status.authenticated || !email) {
+    while (!email) {
+      const result = await runInteractiveAuth()
+      if ('error' in result) {
+        term.writeln(`\x1b[31mSign-in failed: ${result.error}\x1b[0m`)
+        term.writeln('Press A to try again.')
+        continue
       }
-
-      surface.statusBar([
-        [
-          { key: '?', label: 'Help' },
-          { key: 'Q', label: 'Dismiss' },
-        ],
-        [
-          { key: '↑↓', label: 'Navigate' },
-          { key: 'O', label: 'Other' },
-        ],
-      ])
-      surface.flush()
+      email = result.email
     }
+  }
 
-    function show(msg: string): void {
-      lastKeyMessage = msg
-      draw()
+  // Authenticated — hand control to the router.
+  clearViewport()
+  const surface = new XtermSurface(term)
+  const dispatcher = new KeybindDispatcher(term)
+  const router = new Router(surface, dispatcher)
+  const folderlist = new FolderlistScreen()
+
+  window.cairn.mail.onEvent((event) => {
+    if (event.type === 'new') {
+      void folderlist.refresh()
     }
-
-    const dismiss = (): void => {
-      dispatcher.pop()
-      term.write('\x1b[2J\x1b[H')
-      term.writeln('Step 10 OK — dispatcher dismissed.')
-      resolve()
-    }
-
-    dispatcher.push({
-      Q: dismiss,
-      q: dismiss,
-      '?': () => show('help: not yet implemented'),
-      Up: () => show('navigate: up (Up)'),
-      k: () => show('navigate: up (k)'),
-      Down: () => show('navigate: down (Down)'),
-      j: () => show('navigate: down (j)'),
-      O: () => show('other: not yet implemented'),
-    })
-
-    dispatcher.start()
-    draw()
   })
+
+  dispatcher.start()
+  await router.push(folderlist)
 }
 
-void (async () => {
-  term.writeln('Cairn — pre-alpha')
-  term.writeln('')
-
-  term.writeln('IPC sanity check (ping)...')
-  const reply = await window.cairn.ping()
-  term.writeln(`  main process replied: ${reply}`)
-  term.writeln('')
-
-  term.writeln('SQLite sanity check (prefs)...')
-  const previous = await window.cairn.prefs.get('launch.count')
-  const count = previous ? parseInt(previous, 10) + 1 : 1
-  await window.cairn.prefs.set('launch.count', String(count))
-  term.writeln(`  launch count: ${count}`)
-  term.writeln('')
-
-  term.writeln('Auth status...')
-  await setupAuthUi()
-
-  term.writeln('')
-  term.writeln('Launching screen abstraction demo in 2 seconds...')
-  await new Promise((r) => setTimeout(r, 2000))
-  await runSurfaceDemo()
-})()
+void bootstrap()

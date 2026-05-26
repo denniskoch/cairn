@@ -62,6 +62,10 @@ function initMailLayer(accountId: string): void {
 function registerIpcHandlers(): void {
   ipcMain.handle('cairn:ping', async () => 'pong' as const)
 
+  ipcMain.handle('cairn:app:quit', () => {
+    app.quit()
+  })
+
   ipcMain.handle('cairn:prefs:get', async (_, key: unknown) => {
     if (typeof key !== 'string') throw new TypeError('prefs:get: key must be a string')
     if (!db) throw new Error('prefs:get: database not initialized')
