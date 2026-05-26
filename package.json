@@ -3,6 +3,8 @@
   "private": true,
   "version": "0.0.0",
   "description": "A keyboard-driven desktop mail client in the spirit of Alpine.",
+  "license": "Apache-2.0",
+  "author": "Dennis Koch <drkoch@gmail.com>",
   "main": "out/main/index.js",
   "engines": {
     "node": ">=20"

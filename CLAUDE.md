@@ -6,7 +6,7 @@ Cairn is a keyboard-driven desktop mail client (Electron + xterm.js + TypeScript
 
 ## Hard rules
 
-- **Do not reference Alpine's source code.** Cairn is an independent clean-room implementation. Use only Alpine's published manual and observed behavior of the running program.
+- **Reading Alpine's source for reference is fine; don't copy code verbatim.** Cairn is modeled on Alpine and references its source as a reference under Apache 2.0. Alpine source is checked out at `./alpine-<version>/` (currently `./alpine-2.26/`) — gitignored, not part of Cairn. Use it to resolve "how does Alpine actually do X" questions for menu flows, layouts, key handling, edge cases. Write Cairn-side implementations fresh in TypeScript. Where the implementation is directly modeled on a specific Alpine routine, leave a brief comment noting the source (e.g. `// Modeled on Alpine's pith/mailcmd.c:check_for_move()`). If you ever directly port a substantial routine, preserve Alpine's copyright header for that file and update NOTICE.
 - **Do not render HTML mail.** Sanitize, convert to text, display the text. No `<img>`, no inline CSS, no JS, no remote content of any kind — no link previews, no favicon fetches, nothing that resolves an external URL on the user's behalf.
 - **Do not store tokens in plaintext.** Use Electron `safeStorage`. If `safeStorage.isEncryptionAvailable()` returns false (e.g. Linux without libsecret), refuse to store and surface the problem to the user.
 - **Do not unilaterally pick new major libraries.** The v1 stack is locked in (see "Stack" below; rationale in [docs/SPEC.md](docs/SPEC.md) §"Resolved decisions"). For anything outside that list — additional UI libraries, parsers, schedulers, replacements for the picks already made — ask first.

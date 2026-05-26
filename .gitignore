@@ -42,3 +42,7 @@ coverage/
 
 # electron-builder artifacts
 app-builds/
+
+# Alpine source — checked out alongside the project as a reference (see
+# CLAUDE.md). Not part of Cairn; do not commit.
+/alpine-*/

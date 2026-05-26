@@ -4,7 +4,7 @@
 
 ## Attribution
 
-The interface design is inspired by Alpine, the University of Washington's terminal mail client (https://alpineapp.email/). Cairn shares no code with Alpine and is an independent clean-room implementation. Do not reference Alpine's source while implementing. Use only the published user manual and observed behavior of the running program. The name "Alpine" belongs to UW and is not used in any branding, package name, or user-facing string.
+The interface design is modeled on Alpine, the University of Washington's terminal mail client (https://alpineapp.email/). Alpine is licensed Apache 2.0; Cairn is also licensed Apache 2.0. Cairn references Alpine's source as a reference for menu flows, screen layouts, key handling, and edge cases, but is implemented fresh in TypeScript. Where a Cairn routine is closely modeled on a specific Alpine routine, leave a brief comment noting the source. If you ever directly port a substantial routine, preserve Alpine's copyright header for that file and update NOTICE. The name "Alpine" belongs to UW and is not used in any branding, package name, or user-facing string.
 
 ---
 

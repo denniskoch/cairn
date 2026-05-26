@@ -24,8 +24,8 @@ Pre-alpha. Nothing builds yet. See [docs/SPEC.md](docs/SPEC.md) for the full des
 
 ## Attribution
 
-The interface is inspired by [Alpine](https://alpineapp.email/), the University of Washington's terminal mail client. Cairn shares no code with Alpine and is an independent clean-room implementation built from Alpine's published user manual and observed behavior. The name "Alpine" belongs to UW and is not used in any Cairn branding, package name, or user-facing string.
+The interface is modeled on [Alpine](https://alpineapp.email/), the University of Washington's terminal mail client. Alpine is licensed Apache 2.0; Cairn is also licensed Apache 2.0. Cairn is implemented fresh in TypeScript and references Alpine's source as a reference for menu flows, screen layouts, key handling, and edge cases. Where a Cairn routine is closely modeled on a specific Alpine routine, the source is noted inline. The name "Alpine" belongs to UW and is not used in any Cairn branding, package name, or user-facing string.
 
 ## License
 
-TBD.
+[Apache 2.0](LICENSE).
