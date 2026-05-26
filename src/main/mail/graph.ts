@@ -1,6 +1,7 @@
 import type {
   Address,
   Attachment,
+  AttachmentMeta,
   Draft,
   FlagUpdate,
   Folder,
@@ -13,8 +14,9 @@ import type {
   SearchQuery,
 } from '../../shared/mail'
 import type { MailProvider } from './provider'
-import { NotImplementedError } from './errors'
+import { MailError, NotImplementedError } from './errors'
 import { graphRequest, type GetTokenFn } from './graph-http'
+import { extractBody } from './sanitize'
 
 type GraphFolder = {
   id: string
@@ -47,6 +49,49 @@ type GraphMessage = {
   flag?: { flagStatus?: 'notFlagged' | 'flagged' | 'complete' }
   isDraft?: boolean
 }
+
+type GraphBody = { contentType: 'text' | 'html'; content: string }
+type GraphInternetHeader = { name: string; value: string }
+
+type GraphAttachmentMeta = {
+  id: string
+  name?: string
+  contentType?: string
+  size?: number
+  isInline?: boolean
+}
+
+type GraphFileAttachment = GraphAttachmentMeta & {
+  contentBytes?: string // base64; absent on Item/Reference attachments
+}
+
+type GraphFullMessage = GraphMessage & {
+  body?: GraphBody
+  uniqueBody?: GraphBody
+  internetMessageHeaders?: GraphInternetHeader[]
+  attachments?: GraphAttachmentMeta[]
+}
+
+const FULL_MESSAGE_SELECT = [
+  'id',
+  'conversationId',
+  'subject',
+  'from',
+  'toRecipients',
+  'ccRecipients',
+  'receivedDateTime',
+  'bodyPreview',
+  'hasAttachments',
+  'isRead',
+  'flag',
+  'isDraft',
+  'body',
+  'uniqueBody',
+  'internetMessageHeaders',
+].join(',')
+
+const ATTACHMENT_EXPAND =
+  'attachments($select=id,name,contentType,size,isInline)'
 
 // Graph v1.0's Message resource has no 'size' property — listed messages
 // always come back with sizeBytes=0. A real size needs a separate fetch
@@ -125,12 +170,47 @@ export class GraphProvider implements MailProvider {
     }
   }
 
-  async getMessage(_id: MessageId): Promise<Message> {
-    throw new NotImplementedError('getMessage')
+  async getMessage(id: MessageId): Promise<Message> {
+    const m: GraphFullMessage = await graphRequest(
+      this.getToken,
+      `/me/messages/${encodeURIComponent(id)}`,
+      {
+        query: { $select: FULL_MESSAGE_SELECT, $expand: ATTACHMENT_EXPAND },
+      },
+    )
+
+    const header = toMessageHeader(m)
+    const { bodyText, bodyHtml } = extractBody(m.uniqueBody, m.body)
+
+    return {
+      ...header,
+      bodyText,
+      bodyHtml,
+      attachments: (m.attachments ?? []).map(toAttachmentMeta),
+      headers: flattenHeaders(m.internetMessageHeaders),
+    }
   }
 
-  async getAttachment(_messageId: MessageId, _attachmentId: string): Promise<Attachment> {
-    throw new NotImplementedError('getAttachment')
+  async getAttachment(
+    messageId: MessageId,
+    attachmentId: string,
+  ): Promise<Attachment> {
+    const a: GraphFileAttachment = await graphRequest(
+      this.getToken,
+      `/me/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    )
+
+    if (!a.contentBytes) {
+      throw new MailError(
+        'PROVIDER',
+        `attachment ${attachmentId} has no contentBytes (likely an item or reference attachment, not a file)`,
+      )
+    }
+
+    return {
+      ...toAttachmentMeta(a),
+      content: new Uint8Array(Buffer.from(a.contentBytes, 'base64')),
+    }
   }
 
   async send(_draft: Draft): Promise<MessageId> {
@@ -171,6 +251,27 @@ function toAddress(g: GraphEmailAddress | undefined): Address {
     email: g?.emailAddress.address ?? '(unknown)',
     name: g?.emailAddress.name,
   }
+}
+
+function toAttachmentMeta(a: GraphAttachmentMeta): AttachmentMeta {
+  return {
+    id: a.id,
+    name: a.name ?? '(unnamed)',
+    contentType: a.contentType ?? 'application/octet-stream',
+    sizeBytes: a.size ?? 0,
+    isInline: a.isInline ?? false,
+  }
+}
+
+function flattenHeaders(headers?: GraphInternetHeader[]): Record<string, string> {
+  if (!headers) return {}
+  const out: Record<string, string> = {}
+  // Multi-valued headers (Received, etc.) collapse to the last seen — fine
+  // for v1's display purposes; full multi-value handling can come later.
+  for (const h of headers) {
+    out[h.name] = h.value
+  }
+  return out
 }
 
 function toMessageHeader(m: GraphMessage): MessageHeader {

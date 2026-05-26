@@ -67,6 +67,34 @@ async function loadMailDemo(): Promise<void> {
         `  ${dot} ${date} ${from.slice(0, 25).padEnd(25)} ${m.subject.slice(0, 60)}`,
       )
     }
+
+    term.writeln('')
+    term.writeln(`Fetching full message: ${messages[0].subject.slice(0, 50)}...`)
+    const full = await window.cairn.mail.getMessage(messages[0].id)
+    term.writeln('')
+    term.writeln(`  From:    ${full.from.name ?? full.from.email}`)
+    const toLine = full.to.map((a) => a.name ?? a.email).join(', ')
+    term.writeln(`  To:      ${toLine.slice(0, 80)}`)
+    term.writeln(`  Subject: ${full.subject}`)
+    const recv =
+      full.receivedAt instanceof Date ? full.receivedAt.toISOString() : ''
+    term.writeln(`  Date:    ${recv}`)
+    if (full.attachments.length > 0) {
+      term.writeln(
+        `  Attach:  ${full.attachments
+          .map((a) => `${a.name} (${a.contentType}, ${a.sizeBytes}b)`)
+          .join(', ')}`,
+      )
+    }
+    term.writeln('')
+    term.writeln('--- body (first 500 chars) ---')
+    const snippet = full.bodyText.slice(0, 500)
+    for (const line of snippet.split(/\r?\n/)) {
+      term.writeln(line)
+    }
+    if (full.bodyText.length > 500) {
+      term.writeln(`... (${full.bodyText.length - 500} more chars)`)
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     term.writeln(`\x1b[31mLoading mail failed: ${msg}\x1b[0m`)

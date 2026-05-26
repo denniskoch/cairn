@@ -1,4 +1,12 @@
-import type { Folder, FolderId, ListOpts, MessageHeader } from './mail'
+import type {
+  Attachment,
+  Folder,
+  FolderId,
+  ListOpts,
+  Message,
+  MessageHeader,
+  MessageId,
+} from './mail'
 
 export type AuthStatus = {
   authenticated: boolean
@@ -23,6 +31,8 @@ export interface CairnApi {
       folderId: FolderId,
       opts?: ListOpts,
     ): Promise<{ messages: MessageHeader[]; nextCursor?: string }>
+    getMessage(id: MessageId): Promise<Message>
+    getAttachment(messageId: MessageId, attachmentId: string): Promise<Attachment>
   }
 }
 

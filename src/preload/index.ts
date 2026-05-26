@@ -16,6 +16,9 @@ const api: CairnApi = {
     listFolders: () => ipcRenderer.invoke('cairn:mail:listFolders'),
     listMessages: (folderId, opts) =>
       ipcRenderer.invoke('cairn:mail:listMessages', folderId, opts),
+    getMessage: (id) => ipcRenderer.invoke('cairn:mail:getMessage', id),
+    getAttachment: (messageId, attachmentId) =>
+      ipcRenderer.invoke('cairn:mail:getAttachment', messageId, attachmentId),
   },
 }
 

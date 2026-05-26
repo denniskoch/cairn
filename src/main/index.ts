@@ -79,6 +79,28 @@ function registerIpcHandlers(): void {
       return graphProvider.listMessages(folderId, (opts as ListOpts | undefined) ?? {})
     },
   )
+
+  ipcMain.handle('cairn:mail:getMessage', (_, id: unknown) => {
+    if (typeof id !== 'string') {
+      throw new TypeError('mail:getMessage: id must be a string')
+    }
+    if (!graphProvider) throw new Error('mail: provider not initialized')
+    return graphProvider.getMessage(id)
+  })
+
+  ipcMain.handle(
+    'cairn:mail:getAttachment',
+    (_, messageId: unknown, attachmentId: unknown) => {
+      if (typeof messageId !== 'string') {
+        throw new TypeError('mail:getAttachment: messageId must be a string')
+      }
+      if (typeof attachmentId !== 'string') {
+        throw new TypeError('mail:getAttachment: attachmentId must be a string')
+      }
+      if (!graphProvider) throw new Error('mail: provider not initialized')
+      return graphProvider.getAttachment(messageId, attachmentId)
+    },
+  )
 }
 
 app.whenReady().then(async () => {
