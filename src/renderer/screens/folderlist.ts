@@ -8,6 +8,7 @@ export class FolderlistScreen implements Screen {
   private folders: Folder[] = []
   private depths = new Map<string, number>()
   private cursor = 0
+  private error: string | null = null
   private ctx: ScreenContext | null = null
   private unsubscribe: (() => void) | null = null
 
@@ -29,15 +30,21 @@ export class FolderlistScreen implements Screen {
   }
 
   private async loadFolders(): Promise<void> {
-    const folders = await window.cairn.mail.listFolders()
-    this.folders = folders.slice().sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
-    )
-    this.depths = computeDepths(this.folders)
-    if (this.cursor >= this.folders.length) {
-      this.cursor = Math.max(0, this.folders.length - 1)
+    try {
+      const folders = await window.cairn.mail.listFolders()
+      this.folders = folders.slice().sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+      )
+      this.depths = computeDepths(this.folders)
+      if (this.cursor >= this.folders.length) {
+        this.cursor = Math.max(0, this.folders.length - 1)
+      }
+      this.error = null
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : String(err)
+    } finally {
+      this.ctx?.invalidate()
     }
-    this.ctx?.invalidate()
   }
 
   render(): void {
@@ -49,8 +56,19 @@ export class FolderlistScreen implements Screen {
     s.fill(0, 0, s.cols, ' ', { inverse: true })
     s.text(0, 1, 'Cairn — Folder list', { inverse: true, bold: true })
 
+    // Error banner (between header and folder list when present)
+    const startRow = this.error ? 3 : 2
+    if (this.error) {
+      s.fill(1, 0, s.cols, ' ', { bg: 'red', fg: 'white' })
+      const msg = `Error: ${this.error}  —  Press L to retry`
+      s.text(1, 1, msg.slice(0, s.cols - 2), {
+        bg: 'red',
+        fg: 'white',
+        bold: true,
+      })
+    }
+
     // Folders, one per row
-    const startRow = 2
     const visibleRows = s.rows - startRow - 2 // reserve 2 for status bar
     for (let i = 0; i < this.folders.length && i < visibleRows; i++) {
       const f = this.folders[i]

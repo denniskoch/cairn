@@ -13,6 +13,7 @@ export class IndexScreen implements Screen {
   private scrollOffset = 0
   private ctx: ScreenContext | null = null
   private loading = false
+  private error: string | null = null
   private unsubscribe: (() => void) | null = null
 
   // Search mode state (active while user is typing in the / prompt).
@@ -58,6 +59,9 @@ export class IndexScreen implements Screen {
       if (this.cursor >= this.messages.length) {
         this.cursor = Math.max(0, this.messages.length - 1)
       }
+      this.error = null
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : String(err)
     } finally {
       this.loading = false
       this.ctx?.invalidate()
@@ -94,13 +98,23 @@ export class IndexScreen implements Screen {
       s.text(0, s.cols - headerRight.length - 1, headerRight, { inverse: true })
     }
 
-    const startRow = 2
+    const startRow = this.error ? 3 : 2
+    if (this.error) {
+      s.fill(1, 0, s.cols, ' ', { bg: 'red', fg: 'white' })
+      const msg = `Error: ${this.error}  —  Press L to retry`
+      s.text(1, 1, msg.slice(0, s.cols - 2), {
+        bg: 'red',
+        fg: 'white',
+        bold: true,
+      })
+    }
+
     const visibleRows = s.rows - startRow - 2 // 2 rows reserved for status bar
     this.adjustScroll(visibleRows)
 
     if (this.loading && this.messages.length === 0) {
       s.text(startRow, 2, 'Loading...', { fg: 'yellow' })
-    } else if (this.messages.length === 0) {
+    } else if (this.messages.length === 0 && !this.error) {
       s.text(startRow, 2, '(no messages)', { fg: 'brightBlack' })
     }
 
@@ -318,6 +332,10 @@ export class IndexScreen implements Screen {
         }
       },
       '/': () => this.enterSearchMode(),
+      L: () => {
+        this.error = null
+        void this.loadMessages()
+      },
     }
   }
 
@@ -329,6 +347,7 @@ export class IndexScreen implements Screen {
         { key: 'Enter', description: 'Open the highlighted message' },
         { key: 'U', description: 'Toggle read / unread state' },
         { key: 'C', description: 'Compose a new message' },
+        { key: 'L', description: 'Refresh / retry on error' },
         { key: '/', description: 'Search across all folders' },
         { key: 'Q', description: 'Back to folder list' },
         { key: '?', description: 'Show this help' },

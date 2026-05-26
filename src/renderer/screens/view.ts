@@ -15,6 +15,7 @@ export class ViewScreen implements Screen {
   private message: Message | null = null
   private ctx: ScreenContext | null = null
   private loading = true
+  private error: string | null = null
   private scrollOffset = 0
   private fullHeaders = false
   private bodyLines: string[] = []
@@ -26,8 +27,13 @@ export class ViewScreen implements Screen {
 
   async enter(ctx: ScreenContext): Promise<void> {
     this.ctx = ctx
+    await this.loadMessage()
+  }
+
+  private async loadMessage(): Promise<void> {
     this.loading = true
-    this.ctx.invalidate()
+    this.error = null
+    this.ctx?.invalidate()
     try {
       this.message = await window.cairn.mail.getMessage(this.messageId)
       this.bodyLines = (this.message.bodyText ?? '').split(/\r?\n/)
@@ -44,6 +50,8 @@ export class ViewScreen implements Screen {
           .setFlags(this.messageId, { read: true })
           .catch((err) => console.warn('view: mark-read failed:', err))
       }
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : String(err)
     } finally {
       this.loading = false
       this.ctx?.invalidate()
@@ -58,6 +66,21 @@ export class ViewScreen implements Screen {
     if (!this.ctx) return
     const s = this.ctx.surface
     s.clear()
+
+    if (this.error) {
+      s.fill(0, 0, s.cols, ' ', { inverse: true })
+      s.text(0, 1, 'Cairn — Message', { inverse: true, bold: true })
+      s.fill(1, 0, s.cols, ' ', { bg: 'red', fg: 'white' })
+      const msg = `Error: ${this.error}  —  Press L to retry`
+      s.text(1, 1, msg.slice(0, s.cols - 2), {
+        bg: 'red',
+        fg: 'white',
+        bold: true,
+      })
+      this.renderStatusBar(s)
+      s.flush()
+      return
+    }
 
     if (this.loading || !this.message) {
       s.fill(0, 0, s.cols, ' ', { inverse: true })
@@ -248,6 +271,7 @@ export class ViewScreen implements Screen {
       R: () => void this.openCompose('reply'),
       A: () => void this.openCompose('replyAll'),
       F: () => void this.openCompose('forward'),
+      L: () => void this.loadMessage(),
     }
   }
 
@@ -277,6 +301,7 @@ export class ViewScreen implements Screen {
         { key: 'A', description: 'Reply to all recipients' },
         { key: 'F', description: 'Forward this message' },
         { key: 'H', description: 'Toggle brief / full headers' },
+        { key: 'L', description: 'Reload / retry on error' },
         { key: 'Q', description: 'Back to message index' },
         { key: '?', description: 'Show this help' },
       ],
