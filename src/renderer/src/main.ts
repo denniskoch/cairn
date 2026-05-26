@@ -37,6 +37,13 @@ try {
 fit.fit()
 window.addEventListener('resize', () => fit.fit())
 
+// Grab keyboard focus on first launch. Without this, the xterm DOM element
+// doesn't have focus until the user clicks inside — subsequent alt-tabs are
+// fine because focus stays on the element. Also focus on document focus
+// returning to the window in case OS-level switches dropped it.
+term.focus()
+window.addEventListener('focus', () => term.focus())
+
 function clearViewport(): void {
   term.write('\x1b[2J\x1b[H')
 }
