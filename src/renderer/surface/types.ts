@@ -43,6 +43,10 @@ export interface Surface {
   text(row: number, col: number, str: string, attrs?: Attrs): void
   fill(row: number, col: number, width: number, char: string, attrs?: Attrs): void
   statusBar(lines: StatusItem[][]): void
+  /** Place the visible terminal cursor. Pass null to hide it.
+   * clear() resets to hidden so non-editing screens default to no visible
+   * cursor; editing screens (compose) call this after their draw. */
+  setCursor(row: number | null, col?: number): void
   flush(): void
 }
 

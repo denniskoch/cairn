@@ -98,7 +98,7 @@ async function bootstrap(): Promise<void> {
   clearViewport()
   const surface = new XtermSurface(term)
   const dispatcher = new KeybindDispatcher(term)
-  const router = new Router(surface, dispatcher)
+  const router = new Router(surface, dispatcher, term)
   const folderlist = new FolderlistScreen()
 
   dispatcher.start()

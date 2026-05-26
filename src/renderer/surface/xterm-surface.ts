@@ -10,6 +10,8 @@ export class XtermSurface implements Surface {
   private current: CellGrid
   private previous: CellGrid
   private fullRedrawNext = false
+  private cursorRow: number | null = null
+  private cursorCol: number = 0
 
   constructor(private readonly term: Terminal) {
     this.current = new CellGrid(term.cols, term.rows)
@@ -31,6 +33,17 @@ export class XtermSurface implements Surface {
 
   clear(): void {
     this.current.clear()
+    // Each render starts with cursor hidden; only editing screens turn it on.
+    this.cursorRow = null
+  }
+
+  setCursor(row: number | null, col: number = 0): void {
+    if (row === null) {
+      this.cursorRow = null
+    } else {
+      this.cursorRow = row
+      this.cursorCol = col
+    }
   }
 
   cell(row: number, col: number, char: string, attrs?: Attrs): void {
@@ -70,6 +83,15 @@ export class XtermSurface implements Surface {
     }
     const delta = this.current.diff(this.previous)
     if (delta) this.term.write(delta)
+    // After cells, position the cursor. The diff output ends with \x1b[0m
+    // which doesn't change cursor visibility, so we toggle it here.
+    if (this.cursorRow !== null) {
+      this.term.write(
+        `\x1b[${this.cursorRow + 1};${this.cursorCol + 1}H\x1b[?25h`,
+      )
+    } else {
+      this.term.write('\x1b[?25l')
+    }
     this.previous.copyFrom(this.current)
   }
 }

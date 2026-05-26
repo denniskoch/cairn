@@ -11,6 +11,10 @@ export interface ScreenContext {
     invalidate(): void
   }
   invalidate(): void
+  /** Subscribe to typed text that the dispatcher didn't claim. Used by
+   * compose for character input — printable keys fall through xterm and
+   * arrive as data. Returns an unsubscribe function. */
+  onTextInput(handler: (data: string) => void): () => void
 }
 
 export interface Screen {

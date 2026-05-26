@@ -1,5 +1,6 @@
 import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
+import { ComposeScreen } from './compose'
 import type { Screen, ScreenContext } from './types'
 import { ViewScreen } from './view'
 
@@ -173,6 +174,10 @@ export class IndexScreen implements Screen {
             index: this.cursor,
           }),
         )
+      },
+      C: () => {
+        if (!this.ctx) return
+        void this.ctx.router.push(new ComposeScreen())
       },
       U: async () => {
         const m = this.messages[this.cursor]

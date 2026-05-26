@@ -1,3 +1,4 @@
+import type { Terminal } from '@xterm/xterm'
 import type { KeybindDispatcher } from '../keybind'
 import type { Surface } from '../surface'
 import type { Screen, ScreenContext } from './types'
@@ -9,12 +10,17 @@ export class Router {
   constructor(
     private readonly surface: Surface,
     private readonly dispatcher: KeybindDispatcher,
+    private readonly term: Terminal,
   ) {
     this.context = {
       surface: this.surface,
       dispatcher: this.dispatcher,
       router: this,
       invalidate: () => this.invalidate(),
+      onTextInput: (handler) => {
+        const disp = this.term.onData(handler)
+        return () => disp.dispose()
+      },
     }
   }
 

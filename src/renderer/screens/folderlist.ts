@@ -1,5 +1,6 @@
 import type { Folder } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
+import { ComposeScreen } from './compose'
 import { IndexScreen } from './index-screen'
 import type { Screen, ScreenContext } from './types'
 
@@ -117,6 +118,10 @@ export class FolderlistScreen implements Screen {
       },
       L: async () => {
         await this.loadFolders()
+      },
+      C: () => {
+        if (!this.ctx) return
+        void this.ctx.router.push(new ComposeScreen())
       },
       Q: () => {
         void window.cairn.app.quit()
