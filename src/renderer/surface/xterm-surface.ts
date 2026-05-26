@@ -4,7 +4,7 @@ import type { Attrs, StatusItem, Surface } from './types'
 
 const KEY_ATTRS: Attrs = { bold: true, inverse: true }
 const LABEL_ATTRS: Attrs = {}
-const STATUS_GAP = 2 // spaces between items
+const STATUS_GAP = 4 // spaces between items
 
 export class XtermSurface implements Surface {
   private current: CellGrid
@@ -64,14 +64,49 @@ export class XtermSurface implements Surface {
     for (let i = 0; i < lines.length; i++) {
       const row = startRow + i
       this.current.fill(row, 0, this.cols, ' ')
-      let col = 0
-      for (const item of lines[i]) {
-        const needed = item.key.length + 1 + item.label.length + STATUS_GAP
-        if (col + needed > this.cols) break
-        this.current.text(row, col, item.key, KEY_ATTRS)
-        col += item.key.length
-        this.current.text(row, col, ' ' + item.label, LABEL_ATTRS)
-        col += 1 + item.label.length + STATUS_GAP
+
+      const left = lines[i].filter((it) => (it.align ?? 'left') === 'left')
+      const center = lines[i].filter((it) => it.align === 'center')
+      const right = lines[i].filter((it) => it.align === 'right')
+
+      // Left items, packed from col 0.
+      let leftEnd = 0
+      for (const item of left) {
+        const w = item.key.length + 1 + item.label.length
+        if (leftEnd + w > this.cols) break
+        this.current.text(row, leftEnd, item.key, KEY_ATTRS)
+        this.current.text(row, leftEnd + item.key.length, ' ' + item.label, LABEL_ATTRS)
+        leftEnd += w + STATUS_GAP
+      }
+
+      // Right items, packed from right edge (rightmost listed item is leftmost).
+      let rightStart = this.cols
+      for (let j = right.length - 1; j >= 0; j--) {
+        const item = right[j]
+        const w = item.key.length + 1 + item.label.length
+        const start = rightStart - w
+        if (start < leftEnd) break
+        this.current.text(row, start, item.key, KEY_ATTRS)
+        this.current.text(row, start + item.key.length, ' ' + item.label, LABEL_ATTRS)
+        rightStart = start - STATUS_GAP
+      }
+
+      // Center items: pack together, then place the group centered between
+      // leftEnd and rightStart.
+      if (center.length > 0) {
+        const widths = center.map((it) => it.key.length + 1 + it.label.length)
+        const totalWidth =
+          widths.reduce((sum, w) => sum + w, 0) + STATUS_GAP * (center.length - 1)
+        const available = rightStart - leftEnd
+        if (totalWidth <= available) {
+          let col = leftEnd + Math.max(0, Math.floor((available - totalWidth) / 2))
+          for (let j = 0; j < center.length; j++) {
+            const item = center[j]
+            this.current.text(row, col, item.key, KEY_ATTRS)
+            this.current.text(row, col + item.key.length, ' ' + item.label, LABEL_ATTRS)
+            col += widths[j] + STATUS_GAP
+          }
+        }
       }
     }
   }

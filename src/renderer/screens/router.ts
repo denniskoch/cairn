@@ -24,6 +24,10 @@ export class Router {
     }
   }
 
+  canPop(): boolean {
+    return this.stack.length > 1
+  }
+
   async push(screen: Screen): Promise<void> {
     this.stack.push(screen)
     await screen.enter?.(this.context)

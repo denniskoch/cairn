@@ -1,5 +1,6 @@
 export type { Screen, ScreenContext } from './types'
 export { Router } from './router'
+export { MainMenuScreen } from './main-menu'
 export { FolderlistScreen } from './folderlist'
 export { IndexScreen } from './index-screen'
 export { ViewScreen } from './view'

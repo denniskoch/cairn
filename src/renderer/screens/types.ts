@@ -9,6 +9,9 @@ export interface ScreenContext {
     pop(): void | Promise<void>
     replace(s: Screen): void | Promise<void>
     invalidate(): void
+    /** True when the stack has more than one screen — i.e., pop would
+     * reveal a previous screen rather than leave the stack empty. */
+    canPop(): boolean
   }
   invalidate(): void
   /** Subscribe to typed text that the dispatcher didn't claim. Used by

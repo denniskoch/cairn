@@ -7,7 +7,7 @@ import './style.css'
 import '../../shared/ipc'
 import { XtermSurface } from '../surface'
 import { KeybindDispatcher } from '../keybind'
-import { FolderlistScreen, Router } from '../screens'
+import { MainMenuScreen, Router } from '../screens'
 
 const term = new Terminal({
   fontFamily: '"JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace',
@@ -106,10 +106,9 @@ async function bootstrap(): Promise<void> {
   const surface = new XtermSurface(term)
   const dispatcher = new KeybindDispatcher(term)
   const router = new Router(surface, dispatcher, term)
-  const folderlist = new FolderlistScreen()
 
   dispatcher.start()
-  await router.push(folderlist)
+  await router.push(new MainMenuScreen())
 }
 
 void bootstrap()

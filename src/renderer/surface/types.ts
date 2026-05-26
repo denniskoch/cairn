@@ -33,6 +33,11 @@ export interface Cell {
 export interface StatusItem {
   key: string
   label: string
+  /** Where on the row to place this item. 'left' (default) packs from the
+   * left edge; 'center' packs around the center of the bar; 'right' packs
+   * from the right edge. Multiple items in the same alignment stack in
+   * declaration order. */
+  align?: 'left' | 'center' | 'right'
 }
 
 export interface Surface {

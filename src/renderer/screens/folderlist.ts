@@ -124,7 +124,11 @@ export class FolderlistScreen implements Screen {
         void this.ctx.router.push(new ComposeScreen())
       },
       Q: () => {
-        void window.cairn.app.quit()
+        if (this.ctx?.router.canPop()) {
+          void this.ctx.router.pop()
+        } else {
+          void window.cairn.app.quit()
+        }
       },
     }
   }
