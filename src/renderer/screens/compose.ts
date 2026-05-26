@@ -1,9 +1,17 @@
-import type { Draft } from '../../shared/mail'
+import type { Address, Draft, Message } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
 import type { Screen, ScreenContext } from './types'
 
 type Field = 'to' | 'cc' | 'subject' | 'body'
+
+export type ReplyKind = 'reply' | 'replyAll' | 'forward'
+
+export interface ReplyContext {
+  kind: ReplyKind
+  original: Message
+  userEmail: string
+}
 
 const HEADER_LABEL_WIDTH = 9 // "Subject: ".length
 const FIELDS: Field[] = ['to', 'cc', 'subject', 'body']
@@ -30,9 +38,47 @@ export class ComposeScreen implements Screen {
   private ctx: ScreenContext | null = null
   private unsubscribeText: (() => void) | null = null
 
+  constructor(private readonly reply?: ReplyContext) {}
+
   enter(ctx: ScreenContext): void {
     this.ctx = ctx
     this.unsubscribeText = ctx.onTextInput((data) => this.handleTextInput(data))
+    if (this.reply) {
+      this.populateFromReply(this.reply)
+    }
+  }
+
+  private populateFromReply(reply: ReplyContext): void {
+    const orig = reply.original
+    switch (reply.kind) {
+      case 'reply':
+        this.to = orig.from.email
+        this.subject = replySubject(orig.subject)
+        this.bodyLines = ['', ...attributionAndQuote(orig)]
+        this.bodyRow = 0
+        this.bodyCol = 0
+        this.active = 'body'
+        break
+      case 'replyAll':
+        this.to = orig.from.email
+        this.cc = replyAllCc(orig, reply.userEmail).join(', ')
+        this.subject = replySubject(orig.subject)
+        this.bodyLines = ['', ...attributionAndQuote(orig)]
+        this.bodyRow = 0
+        this.bodyCol = 0
+        this.active = 'body'
+        break
+      case 'forward':
+        this.subject = forwardSubject(orig.subject)
+        this.bodyLines = ['', ...forwardBody(orig)]
+        this.bodyRow = 0
+        this.bodyCol = 0
+        this.active = 'to' // user fills in recipient
+        break
+    }
+    this.toCol = this.to.length
+    this.ccCol = this.cc.length
+    this.subjectCol = this.subject.length
   }
 
   exit(): void {
@@ -465,4 +511,85 @@ function readOnlyFrom(): string {
   // the From row is informational only — Graph always uses the
   // authenticated user as From.
   return '(authenticated user)'
+}
+
+// ---- reply / forward helpers (modeled on Alpine's pith/reply.c) ----
+
+// Subject prefixes Cairn recognizes as "already a reply" and won't re-prefix.
+// Alpine only checks 'Re:'; we also accept common non-English equivalents that
+// surface in real inboxes.
+const REPLY_PREFIX_RE = /^\s*(re|aw|sv|antw|odp)\s*(\[[^\]]*\]\s*)?:/i
+const FORWARD_PREFIX_RE = /^\s*(fwd?|tr|wg)\s*:/i
+
+export function replySubject(orig: string): string {
+  if (!orig) return 'Re: your mail'
+  return REPLY_PREFIX_RE.test(orig) ? orig : `Re: ${orig}`
+}
+
+export function forwardSubject(orig: string): string {
+  if (!orig) return 'Fwd: Forwarded mail'
+  return FORWARD_PREFIX_RE.test(orig) ? orig : `Fwd: ${orig}`
+}
+
+export function replyAllCc(orig: Message, userEmail: string): string[] {
+  const seen = new Set<string>([
+    userEmail.toLowerCase(),
+    orig.from.email.toLowerCase(),
+  ])
+  const out: string[] = []
+  for (const a of [...orig.to, ...orig.cc]) {
+    const e = a.email.toLowerCase()
+    if (!e || seen.has(e)) continue
+    seen.add(e)
+    out.push(a.email)
+  }
+  return out
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+]
+
+// Modeled on Alpine's default DEFAULT_REPLY_INTRO branch in
+// pith/reply.c:reply_delimiter (~ln 2050): "On <Wkday>, <D> <Mon> <YYYY>,
+// <from> wrote:".
+export function attributionLine(date: Date, from: Address): string {
+  const wk = WEEKDAYS[date.getDay()]
+  const d = date.getDate()
+  const mon = MONTHS[date.getMonth()]
+  const yr = date.getFullYear()
+  const who = from.name ? `${from.name} <${from.email}>` : from.email
+  return `On ${wk}, ${d} ${mon} ${yr}, ${who} wrote:`
+}
+
+function attributionAndQuote(orig: Message): string[] {
+  const line = attributionLine(
+    orig.receivedAt instanceof Date ? orig.receivedAt : new Date(0),
+    orig.from,
+  )
+  const quoted = (orig.bodyText ?? '').split(/\r?\n/).map((l) => `> ${l}`)
+  return [line, ...quoted]
+}
+
+function addrLabel(a: Address): string {
+  return a.name ? `${a.name} <${a.email}>` : a.email
+}
+
+function forwardBody(orig: Message): string[] {
+  const date = orig.receivedAt instanceof Date ? orig.receivedAt.toString() : ''
+  const out: string[] = [
+    '---------- Forwarded message ----------',
+    `From: ${addrLabel(orig.from)}`,
+    `Date: ${date}`,
+    `Subject: ${orig.subject}`,
+    `To: ${orig.to.map(addrLabel).join(', ')}`,
+  ]
+  if (orig.cc.length > 0) {
+    out.push(`Cc: ${orig.cc.map(addrLabel).join(', ')}`)
+  }
+  out.push('')
+  out.push(...(orig.bodyText ?? '').split(/\r?\n/))
+  return out
 }

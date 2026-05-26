@@ -1,6 +1,7 @@
 import type { Message, MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
+import { ComposeScreen, type ReplyKind } from './compose'
 import type { Screen, ScreenContext } from './types'
 
 const BRIEF_HEADERS = ['Date', 'From', 'To', 'Cc', 'Subject']
@@ -244,7 +245,23 @@ export class ViewScreen implements Screen {
           )
         }
       },
+      R: () => void this.openCompose('reply'),
+      A: () => void this.openCompose('replyAll'),
+      F: () => void this.openCompose('forward'),
     }
+  }
+
+  private async openCompose(kind: ReplyKind): Promise<void> {
+    if (!this.ctx || !this.message) return
+    const status = await window.cairn.auth.status()
+    const userEmail = status.email ?? ''
+    void this.ctx.router.push(
+      new ComposeScreen({
+        kind,
+        original: this.message,
+        userEmail,
+      }),
+    )
   }
 }
 
