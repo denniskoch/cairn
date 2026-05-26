@@ -7,6 +7,11 @@ const api: CairnApi = {
     get: (key) => ipcRenderer.invoke('cairn:prefs:get', key),
     set: (key, value) => ipcRenderer.invoke('cairn:prefs:set', key, value),
   },
+  auth: {
+    start: () => ipcRenderer.invoke('cairn:auth:start'),
+    status: () => ipcRenderer.invoke('cairn:auth:status'),
+    signOut: () => ipcRenderer.invoke('cairn:auth:signOut'),
+  },
 }
 
 contextBridge.exposeInMainWorld('cairn', api)

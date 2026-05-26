@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openDatabase } from './db'
+import { initAuth, startInteractive, getStatus, signOut } from './auth/msal'
 
 let mainWindow: BrowserWindow | null = null
 let db: Database.Database | null = null
@@ -52,12 +53,17 @@ function registerIpcHandlers(): void {
       ).run(key, value)
     },
   )
+
+  ipcMain.handle('cairn:auth:start', () => startInteractive())
+  ipcMain.handle('cairn:auth:status', () => getStatus())
+  ipcMain.handle('cairn:auth:signOut', () => signOut())
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   try {
     db = openDatabase(join(app.getPath('userData'), 'cairn.db'))
     registerIpcHandlers()
+    await initAuth(db)
     createWindow()
   } catch (err) {
     console.error('Cairn failed to start:', err)

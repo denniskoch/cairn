@@ -34,6 +34,40 @@ try {
 fit.fit()
 window.addEventListener('resize', () => fit.fit())
 
+let isAuthenticating = false
+
+async function setupAuthUi(): Promise<void> {
+  const status = await window.cairn.auth.status()
+
+  if (!status.encryptionAvailable) {
+    term.writeln('\x1b[31mERROR: OS keychain encryption unavailable.\x1b[0m')
+    term.writeln('Cannot store auth tokens. On Linux, install libsecret.')
+    return
+  }
+
+  if (status.authenticated) {
+    term.writeln(`Signed in as: \x1b[1m${status.email}\x1b[0m`)
+    return
+  }
+
+  term.writeln('Press \x1b[1mA\x1b[0m to authenticate with Microsoft.')
+
+  term.onKey(async ({ domEvent }) => {
+    if (isAuthenticating) return
+    if (domEvent.key !== 'A' && domEvent.key !== 'a') return
+    isAuthenticating = true
+    term.writeln('Opening browser for sign-in...')
+    try {
+      const result = await window.cairn.auth.start()
+      term.writeln(`Signed in as: \x1b[1m${result.email}\x1b[0m`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      term.writeln(`\x1b[31mSign-in failed: ${msg}\x1b[0m`)
+      isAuthenticating = false
+    }
+  })
+}
+
 void (async () => {
   term.writeln('Cairn — pre-alpha')
   term.writeln('')
@@ -50,5 +84,9 @@ void (async () => {
   term.writeln(`  launch count: ${count}`)
   term.writeln('')
 
-  term.writeln('Step 2 OK.')
+  term.writeln('Auth status...')
+  await setupAuthUi()
+  term.writeln('')
+
+  term.writeln('Step 3 OK.')
 })()
