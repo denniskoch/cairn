@@ -1,12 +1,12 @@
 import type { Terminal } from '@xterm/xterm'
 import { CellGrid } from './buffer'
-import type { Attrs, Screen, StatusItem } from './types'
+import type { Attrs, StatusItem, Surface } from './types'
 
 const KEY_ATTRS: Attrs = { bold: true, inverse: true }
 const LABEL_ATTRS: Attrs = {}
 const STATUS_GAP = 2 // spaces between items
 
-export class XtermScreen implements Screen {
+export class XtermSurface implements Surface {
   private current: CellGrid
   private previous: CellGrid
   private fullRedrawNext = false

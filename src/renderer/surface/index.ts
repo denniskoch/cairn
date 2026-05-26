@@ -1,5 +1,5 @@
-export type { Attrs, Cell, Color, Screen, StatusItem } from './types'
+export type { Attrs, Cell, Color, StatusItem, Surface } from './types'
 export { DEFAULT_ATTRS, defaultCell } from './types'
 export { attrsEqual, attrsToAnsi } from './attrs'
 export { CellGrid } from './buffer'
-export { XtermScreen } from './xterm-screen'
+export { XtermSurface } from './xterm-surface'

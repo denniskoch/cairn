@@ -5,7 +5,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import './style.css'
 import '../../shared/ipc'
-import { XtermScreen } from '../screen'
+import { XtermSurface } from '../surface'
 import { KeybindDispatcher } from '../keybind'
 
 const term = new Terminal({
@@ -153,36 +153,36 @@ async function setupAuthUi(): Promise<void> {
   })
 }
 
-function runScreenDemo(): Promise<void> {
+function runSurfaceDemo(): Promise<void> {
   return new Promise((resolve) => {
     // Clear the visible viewport first — without this, the demo's absolute
     // cursor positioning overwrites whatever is still on screen from the
     // scrollback (folders list, message preview, etc.).
     term.write('\x1b[2J\x1b[H')
 
-    const screen = new XtermScreen(term)
+    const surface = new XtermSurface(term)
     const dispatcher = new KeybindDispatcher(term)
     let lastKeyMessage = ''
 
     function draw(): void {
-      screen.clear()
-      screen.text(1, 2, 'Cairn — screen + keybind demo', { bold: true })
-      screen.text(3, 2, 'Cell-based draw primitives:')
-      screen.text(5, 4, 'Plain text')
-      screen.text(6, 4, 'Bold text', { bold: true })
-      screen.text(7, 4, 'Underlined text', { underline: true })
-      screen.text(8, 4, 'Inverse text', { inverse: true })
-      screen.text(9, 4, 'Foreground color', { fg: 'cyan' })
-      screen.text(10, 4, 'On a background', { fg: 'black', bg: 'yellow' })
+      surface.clear()
+      surface.text(1, 2, 'Cairn — surface + keybind demo', { bold: true })
+      surface.text(3, 2, 'Cell-based draw primitives:')
+      surface.text(5, 4, 'Plain text')
+      surface.text(6, 4, 'Bold text', { bold: true })
+      surface.text(7, 4, 'Underlined text', { underline: true })
+      surface.text(8, 4, 'Inverse text', { inverse: true })
+      surface.text(9, 4, 'Foreground color', { fg: 'cyan' })
+      surface.text(10, 4, 'On a background', { fg: 'black', bg: 'yellow' })
 
-      screen.text(12, 2, 'Try: ? for help, ↑↓ or j/k to navigate, O for other.')
-      screen.text(13, 2, 'Press Q to dismiss.')
+      surface.text(12, 2, 'Try: ? for help, ↑↓ or j/k to navigate, O for other.')
+      surface.text(13, 2, 'Press Q to dismiss.')
 
       if (lastKeyMessage) {
-        screen.text(15, 2, lastKeyMessage, { fg: 'green' })
+        surface.text(15, 2, lastKeyMessage, { fg: 'green' })
       }
 
-      screen.statusBar([
+      surface.statusBar([
         [
           { key: '?', label: 'Help' },
           { key: 'Q', label: 'Dismiss' },
@@ -192,7 +192,7 @@ function runScreenDemo(): Promise<void> {
           { key: 'O', label: 'Other' },
         ],
       ])
-      screen.flush()
+      surface.flush()
     }
 
     function show(msg: string): void {
@@ -245,5 +245,5 @@ void (async () => {
   term.writeln('')
   term.writeln('Launching screen abstraction demo in 2 seconds...')
   await new Promise((r) => setTimeout(r, 2000))
-  await runScreenDemo()
+  await runSurfaceDemo()
 })()

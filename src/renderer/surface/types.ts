@@ -35,7 +35,7 @@ export interface StatusItem {
   label: string
 }
 
-export interface Screen {
+export interface Surface {
   readonly cols: number
   readonly rows: number
   clear(): void
