@@ -21,7 +21,7 @@ Main process owns all network I/O, SQLite, keychain, OAuth, sync schedulers, and
 
 ## Stack
 
-- Electron + TypeScript (main, renderer, shared)
+- Electron + TypeScript (main, renderer, shared). **Pinned to `~41.7`** — Electron 42's V8 added an `ExternalPointerTypeTag` parameter to `External::New` that `better-sqlite3@12.10` doesn't compile against (10 errors in `v8-external.h`). Revisit the pin when better-sqlite3 ships a compatible release.
 - xterm.js (WebGL renderer, fit + web-links addons) in the renderer
 - `better-sqlite3` for the local cache (synchronous, embedded)
 - `@azure/msal-node` for OAuth (PKCE + loopback)
