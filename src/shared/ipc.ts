@@ -1,3 +1,5 @@
+import type { Folder, FolderId, ListOpts, MessageHeader } from './mail'
+
 export type AuthStatus = {
   authenticated: boolean
   email?: string
@@ -14,6 +16,13 @@ export interface CairnApi {
     start(): Promise<{ email: string }>
     status(): Promise<AuthStatus>
     signOut(): Promise<void>
+  }
+  mail: {
+    listFolders(): Promise<Folder[]>
+    listMessages(
+      folderId: FolderId,
+      opts?: ListOpts,
+    ): Promise<{ messages: MessageHeader[]; nextCursor?: string }>
   }
 }
 

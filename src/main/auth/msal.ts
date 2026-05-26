@@ -1,4 +1,5 @@
 import {
+  InteractionRequiredAuthError,
   PublicClientApplication,
   type AccountInfo,
   type ICachePlugin,
@@ -174,6 +175,29 @@ export async function getStatus(): Promise<{
     return { authenticated: true, email: currentAccount.username, encryptionAvailable }
   }
   return { authenticated: false, encryptionAvailable }
+}
+
+export async function getAccessToken(): Promise<string> {
+  if (!pca || !currentAccount) {
+    throw new Error('auth: not authenticated')
+  }
+  try {
+    const result = await pca.acquireTokenSilent({
+      scopes: authConfig.scopes,
+      account: currentAccount,
+    })
+    return result.accessToken
+  } catch (err) {
+    // Refresh-token-permanently-bad: clear state so the user is forced
+    // through interactive auth on next attempt. Transient errors (network,
+    // service outage) bubble up untouched so callers can retry.
+    if (err instanceof InteractionRequiredAuthError && db && currentAccountId) {
+      db.prepare('DELETE FROM accounts WHERE id = ?').run(currentAccountId)
+      currentAccount = null
+      currentAccountId = null
+    }
+    throw err
+  }
 }
 
 export async function signOut(): Promise<void> {

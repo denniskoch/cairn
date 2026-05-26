@@ -36,6 +36,43 @@ window.addEventListener('resize', () => fit.fit())
 
 let isAuthenticating = false
 
+async function loadMailDemo(): Promise<void> {
+  term.writeln('')
+  term.writeln('Loading folders...')
+  try {
+    const folders = await window.cairn.mail.listFolders()
+    term.writeln(`${folders.length} folders:`)
+    for (const f of folders.slice(0, 10)) {
+      term.writeln(
+        `  ${f.name.slice(0, 25).padEnd(25)} unread: ${f.unreadCount}, total: ${f.totalCount}`,
+      )
+    }
+    if (folders.length > 10) {
+      term.writeln(`  ...and ${folders.length - 10} more`)
+    }
+
+    term.writeln('')
+    term.writeln('Inbox preview (latest 5):')
+    const { messages } = await window.cairn.mail.listMessages('inbox', { limit: 5 })
+    if (messages.length === 0) {
+      term.writeln('  (empty)')
+      return
+    }
+    for (const m of messages) {
+      const from = m.from.name ?? m.from.email
+      const dot = m.flags.read ? ' ' : '*'
+      const date =
+        m.receivedAt instanceof Date ? m.receivedAt.toISOString().slice(0, 10) : ''
+      term.writeln(
+        `  ${dot} ${date} ${from.slice(0, 25).padEnd(25)} ${m.subject.slice(0, 60)}`,
+      )
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    term.writeln(`\x1b[31mLoading mail failed: ${msg}\x1b[0m`)
+  }
+}
+
 async function setupAuthUi(): Promise<void> {
   const status = await window.cairn.auth.status()
 
@@ -45,8 +82,9 @@ async function setupAuthUi(): Promise<void> {
     return
   }
 
-  if (status.authenticated) {
+  if (status.authenticated && status.email) {
     term.writeln(`Signed in as: \x1b[1m${status.email}\x1b[0m`)
+    await loadMailDemo()
     return
   }
 
@@ -60,6 +98,7 @@ async function setupAuthUi(): Promise<void> {
     try {
       const result = await window.cairn.auth.start()
       term.writeln(`Signed in as: \x1b[1m${result.email}\x1b[0m`)
+      await loadMailDemo()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       term.writeln(`\x1b[31mSign-in failed: ${msg}\x1b[0m`)
@@ -86,7 +125,4 @@ void (async () => {
 
   term.writeln('Auth status...')
   await setupAuthUi()
-  term.writeln('')
-
-  term.writeln('Step 3 OK.')
 })()

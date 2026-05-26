@@ -12,6 +12,11 @@ const api: CairnApi = {
     status: () => ipcRenderer.invoke('cairn:auth:status'),
     signOut: () => ipcRenderer.invoke('cairn:auth:signOut'),
   },
+  mail: {
+    listFolders: () => ipcRenderer.invoke('cairn:mail:listFolders'),
+    listMessages: (folderId, opts) =>
+      ipcRenderer.invoke('cairn:mail:listMessages', folderId, opts),
+  },
 }
 
 contextBridge.exposeInMainWorld('cairn', api)

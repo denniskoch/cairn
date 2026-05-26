@@ -2,10 +2,13 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openDatabase } from './db'
-import { initAuth, startInteractive, getStatus, signOut } from './auth/msal'
+import { initAuth, startInteractive, getStatus, signOut, getAccessToken } from './auth/msal'
+import { GraphProvider } from './mail/graph'
+import type { ListOpts } from '../shared/mail'
 
 let mainWindow: BrowserWindow | null = null
 let db: Database.Database | null = null
+let graphProvider: GraphProvider | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -57,11 +60,31 @@ function registerIpcHandlers(): void {
   ipcMain.handle('cairn:auth:start', () => startInteractive())
   ipcMain.handle('cairn:auth:status', () => getStatus())
   ipcMain.handle('cairn:auth:signOut', () => signOut())
+
+  ipcMain.handle('cairn:mail:listFolders', () => {
+    if (!graphProvider) throw new Error('mail: provider not initialized')
+    return graphProvider.listFolders()
+  })
+
+  ipcMain.handle(
+    'cairn:mail:listMessages',
+    (_, folderId: unknown, opts: unknown) => {
+      if (typeof folderId !== 'string') {
+        throw new TypeError('mail:listMessages: folderId must be a string')
+      }
+      if (opts !== undefined && (typeof opts !== 'object' || opts === null)) {
+        throw new TypeError('mail:listMessages: opts must be an object or undefined')
+      }
+      if (!graphProvider) throw new Error('mail: provider not initialized')
+      return graphProvider.listMessages(folderId, (opts as ListOpts | undefined) ?? {})
+    },
+  )
 }
 
 app.whenReady().then(async () => {
   try {
     db = openDatabase(join(app.getPath('userData'), 'cairn.db'))
+    graphProvider = new GraphProvider(getAccessToken)
     registerIpcHandlers()
     await initAuth(db)
     createWindow()
