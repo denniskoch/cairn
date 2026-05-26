@@ -5,6 +5,7 @@ import type {
   Folder,
   FolderId,
   ListOpts,
+  MailEvent,
   Message,
   MessageHeader,
   MessageId,
@@ -40,6 +41,7 @@ export interface CairnApi {
     move(id: MessageId, dest: FolderId): Promise<void>
     delete(id: MessageId, permanent?: boolean): Promise<void>
     setFlags(id: MessageId, flags: FlagUpdate): Promise<void>
+    onEvent(cb: (event: MailEvent) => void): () => void
   }
 }
 

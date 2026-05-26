@@ -35,6 +35,20 @@ fit.fit()
 window.addEventListener('resize', () => fit.fit())
 
 let isAuthenticating = false
+let mailEventsBound = false
+
+function subscribeMailEvents(): void {
+  if (mailEventsBound) return
+  mailEventsBound = true
+  window.cairn.mail.onEvent((event) => {
+    if (event.type === 'new') {
+      const from = event.message.from.name ?? event.message.from.email
+      term.writeln(
+        `\x1b[33m[NEW]\x1b[0m ${from.slice(0, 25).padEnd(25)} ${event.message.subject.slice(0, 60)}`,
+      )
+    }
+  })
+}
 
 async function loadMailDemo(): Promise<void> {
   term.writeln('')
@@ -112,6 +126,7 @@ async function setupAuthUi(): Promise<void> {
 
   if (status.authenticated && status.email) {
     term.writeln(`Signed in as: \x1b[1m${status.email}\x1b[0m`)
+    subscribeMailEvents()
     await loadMailDemo()
     return
   }
@@ -126,6 +141,7 @@ async function setupAuthUi(): Promise<void> {
     try {
       const result = await window.cairn.auth.start()
       term.writeln(`Signed in as: \x1b[1m${result.email}\x1b[0m`)
+      subscribeMailEvents()
       await loadMailDemo()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

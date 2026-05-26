@@ -177,6 +177,10 @@ export async function getStatus(): Promise<{
   return { authenticated: false, encryptionAvailable }
 }
 
+export function getCurrentAccountId(): string | null {
+  return currentAccountId
+}
+
 export async function getAccessToken(): Promise<string> {
   if (!pca || !currentAccount) {
     throw new Error('auth: not authenticated')

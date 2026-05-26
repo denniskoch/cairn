@@ -1,5 +1,6 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { CairnApi } from '../shared/ipc'
+import type { MailEvent } from '../shared/mail'
 
 const api: CairnApi = {
   ping: () => ipcRenderer.invoke('cairn:ping'),
@@ -26,6 +27,13 @@ const api: CairnApi = {
       ipcRenderer.invoke('cairn:mail:delete', id, permanent),
     setFlags: (id, flags) =>
       ipcRenderer.invoke('cairn:mail:setFlags', id, flags),
+    onEvent: (cb) => {
+      const handler = (_event: IpcRendererEvent, mailEvent: MailEvent) => cb(mailEvent)
+      ipcRenderer.on('cairn:mail:event', handler)
+      return () => {
+        ipcRenderer.off('cairn:mail:event', handler)
+      }
+    },
   },
 }
 

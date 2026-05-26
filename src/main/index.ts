@@ -2,13 +2,23 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openDatabase } from './db'
-import { initAuth, startInteractive, getStatus, signOut, getAccessToken } from './auth/msal'
+import {
+  initAuth,
+  startInteractive,
+  getStatus,
+  signOut,
+  getAccessToken,
+  getCurrentAccountId,
+} from './auth/msal'
 import { GraphProvider } from './mail/graph'
-import type { Draft, FlagUpdate, ListOpts } from '../shared/mail'
+import { MailCache } from './mail/cache'
+import { SyncScheduler } from './mail/sync'
+import type { Draft, FlagUpdate, ListOpts, MailEvent } from '../shared/mail'
 
 let mainWindow: BrowserWindow | null = null
 let db: Database.Database | null = null
 let graphProvider: GraphProvider | null = null
+let sync: SyncScheduler | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -31,6 +41,22 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+function initMailLayer(accountId: string): void {
+  if (!db) throw new Error('mail: db not initialized')
+  if (graphProvider) return // already up; ignore re-auth of same account
+  const cache = new MailCache(db, accountId)
+  sync = new SyncScheduler(cache, getAccessToken)
+  graphProvider = new GraphProvider(getAccessToken, cache, sync)
+
+  sync.events.on('mail', (event: MailEvent) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('cairn:mail:event', event)
+    }
+  })
+
+  sync.start()
 }
 
 function registerIpcHandlers(): void {
@@ -57,7 +83,12 @@ function registerIpcHandlers(): void {
     },
   )
 
-  ipcMain.handle('cairn:auth:start', () => startInteractive())
+  ipcMain.handle('cairn:auth:start', async () => {
+    const result = await startInteractive()
+    const accountId = getCurrentAccountId()
+    if (accountId) initMailLayer(accountId)
+    return result
+  })
   ipcMain.handle('cairn:auth:status', () => getStatus())
   ipcMain.handle('cairn:auth:signOut', () => signOut())
 
@@ -147,9 +178,10 @@ function registerIpcHandlers(): void {
 app.whenReady().then(async () => {
   try {
     db = openDatabase(join(app.getPath('userData'), 'cairn.db'))
-    graphProvider = new GraphProvider(getAccessToken)
     registerIpcHandlers()
     await initAuth(db)
+    const accountId = getCurrentAccountId()
+    if (accountId) initMailLayer(accountId)
     createWindow()
   } catch (err) {
     console.error('Cairn failed to start:', err)
@@ -166,6 +198,7 @@ app.on('activate', () => {
 })
 
 app.on('before-quit', () => {
+  sync?.stop()
   db?.close()
   db = null
 })
