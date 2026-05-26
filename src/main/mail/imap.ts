@@ -38,7 +38,7 @@ export class ImapProvider implements MailProvider {
     throw new NotImplementedError('getAttachment')
   }
 
-  async send(_draft: Draft): Promise<MessageId> {
+  async send(_draft: Draft): Promise<void> {
     throw new NotImplementedError('send')
   }
 

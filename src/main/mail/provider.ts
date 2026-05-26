@@ -24,7 +24,7 @@ export interface MailProvider {
   getMessage(id: MessageId): Promise<Message>
   getAttachment(messageId: MessageId, attachmentId: string): Promise<Attachment>
 
-  send(draft: Draft): Promise<MessageId>
+  send(draft: Draft): Promise<void>
   saveDraft(draft: Draft): Promise<MessageId>
   move(id: MessageId, dest: FolderId): Promise<void>
   delete(id: MessageId, permanent?: boolean): Promise<void>

@@ -1,5 +1,7 @@
 import type {
   Attachment,
+  Draft,
+  FlagUpdate,
   Folder,
   FolderId,
   ListOpts,
@@ -33,6 +35,11 @@ export interface CairnApi {
     ): Promise<{ messages: MessageHeader[]; nextCursor?: string }>
     getMessage(id: MessageId): Promise<Message>
     getAttachment(messageId: MessageId, attachmentId: string): Promise<Attachment>
+    send(draft: Draft): Promise<void>
+    saveDraft(draft: Draft): Promise<MessageId>
+    move(id: MessageId, dest: FolderId): Promise<void>
+    delete(id: MessageId, permanent?: boolean): Promise<void>
+    setFlags(id: MessageId, flags: FlagUpdate): Promise<void>
   }
 }
 

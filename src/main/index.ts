@@ -4,7 +4,7 @@ import type Database from 'better-sqlite3'
 import { openDatabase } from './db'
 import { initAuth, startInteractive, getStatus, signOut, getAccessToken } from './auth/msal'
 import { GraphProvider } from './mail/graph'
-import type { ListOpts } from '../shared/mail'
+import type { Draft, FlagUpdate, ListOpts } from '../shared/mail'
 
 let mainWindow: BrowserWindow | null = null
 let db: Database.Database | null = null
@@ -101,6 +101,47 @@ function registerIpcHandlers(): void {
       return graphProvider.getAttachment(messageId, attachmentId)
     },
   )
+
+  ipcMain.handle('cairn:mail:send', (_, draft: unknown) => {
+    if (typeof draft !== 'object' || draft === null) {
+      throw new TypeError('mail:send: draft must be an object')
+    }
+    if (!graphProvider) throw new Error('mail: provider not initialized')
+    return graphProvider.send(draft as Draft)
+  })
+
+  ipcMain.handle('cairn:mail:saveDraft', (_, draft: unknown) => {
+    if (typeof draft !== 'object' || draft === null) {
+      throw new TypeError('mail:saveDraft: draft must be an object')
+    }
+    if (!graphProvider) throw new Error('mail: provider not initialized')
+    return graphProvider.saveDraft(draft as Draft)
+  })
+
+  ipcMain.handle('cairn:mail:move', (_, id: unknown, dest: unknown) => {
+    if (typeof id !== 'string') throw new TypeError('mail:move: id must be a string')
+    if (typeof dest !== 'string') throw new TypeError('mail:move: dest must be a string')
+    if (!graphProvider) throw new Error('mail: provider not initialized')
+    return graphProvider.move(id, dest)
+  })
+
+  ipcMain.handle('cairn:mail:delete', (_, id: unknown, permanent: unknown) => {
+    if (typeof id !== 'string') throw new TypeError('mail:delete: id must be a string')
+    if (permanent !== undefined && typeof permanent !== 'boolean') {
+      throw new TypeError('mail:delete: permanent must be a boolean or undefined')
+    }
+    if (!graphProvider) throw new Error('mail: provider not initialized')
+    return graphProvider.delete(id, permanent)
+  })
+
+  ipcMain.handle('cairn:mail:setFlags', (_, id: unknown, flags: unknown) => {
+    if (typeof id !== 'string') throw new TypeError('mail:setFlags: id must be a string')
+    if (typeof flags !== 'object' || flags === null) {
+      throw new TypeError('mail:setFlags: flags must be an object')
+    }
+    if (!graphProvider) throw new Error('mail: provider not initialized')
+    return graphProvider.setFlags(id, flags as FlagUpdate)
+  })
 }
 
 app.whenReady().then(async () => {

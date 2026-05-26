@@ -19,6 +19,13 @@ const api: CairnApi = {
     getMessage: (id) => ipcRenderer.invoke('cairn:mail:getMessage', id),
     getAttachment: (messageId, attachmentId) =>
       ipcRenderer.invoke('cairn:mail:getAttachment', messageId, attachmentId),
+    send: (draft) => ipcRenderer.invoke('cairn:mail:send', draft),
+    saveDraft: (draft) => ipcRenderer.invoke('cairn:mail:saveDraft', draft),
+    move: (id, dest) => ipcRenderer.invoke('cairn:mail:move', id, dest),
+    delete: (id, permanent) =>
+      ipcRenderer.invoke('cairn:mail:delete', id, permanent),
+    setFlags: (id, flags) =>
+      ipcRenderer.invoke('cairn:mail:setFlags', id, flags),
   },
 }
 

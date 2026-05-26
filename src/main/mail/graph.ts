@@ -1,6 +1,7 @@
 import type {
   Address,
   Attachment,
+  AttachmentInput,
   AttachmentMeta,
   Draft,
   FlagUpdate,
@@ -92,6 +93,51 @@ const FULL_MESSAGE_SELECT = [
 
 const ATTACHMENT_EXPAND =
   'attachments($select=id,name,contentType,size,isInline)'
+
+type GraphRecipient = { emailAddress: { address: string } }
+
+type GraphFileAttachmentInput = {
+  '@odata.type': '#microsoft.graph.fileAttachment'
+  name: string
+  contentType: string
+  contentBytes: string
+}
+
+type GraphMessageInput = {
+  subject: string
+  body: { contentType: 'Text'; content: string }
+  toRecipients: GraphRecipient[]
+  ccRecipients?: GraphRecipient[]
+  bccRecipients?: GraphRecipient[]
+  attachments?: GraphFileAttachmentInput[]
+}
+
+function toRecipients(addrs: string[] | undefined): GraphRecipient[] | undefined {
+  if (!addrs?.length) return undefined
+  return addrs.map((address) => ({ emailAddress: { address } }))
+}
+
+function toGraphMessage(draft: Draft): GraphMessageInput {
+  // inReplyTo / references are deliberately ignored at this layer. Threading
+  // headers on outbound mail come from Graph's createReply endpoint, which we
+  // wire as a separate provider method in step 15.
+  return {
+    subject: draft.subject,
+    body: { contentType: 'Text', content: draft.bodyText },
+    toRecipients: toRecipients(draft.to) ?? [],
+    ccRecipients: toRecipients(draft.cc),
+    bccRecipients: toRecipients(draft.bcc),
+  }
+}
+
+function toGraphFileAttachment(att: AttachmentInput): GraphFileAttachmentInput {
+  return {
+    '@odata.type': '#microsoft.graph.fileAttachment',
+    name: att.name,
+    contentType: att.contentType,
+    contentBytes: Buffer.from(att.content).toString('base64'),
+  }
+}
 
 // Graph v1.0's Message resource has no 'size' property — listed messages
 // always come back with sizeBytes=0. A real size needs a separate fetch
@@ -213,24 +259,79 @@ export class GraphProvider implements MailProvider {
     }
   }
 
-  async send(_draft: Draft): Promise<MessageId> {
-    throw new NotImplementedError('send')
+  async send(draft: Draft): Promise<void> {
+    const message: GraphMessageInput = toGraphMessage(draft)
+    if (draft.attachments?.length) {
+      message.attachments = draft.attachments.map(toGraphFileAttachment)
+    }
+    // sendMail's request body is capped near 4MB; for larger attachments we'd
+    // need to save a draft and use createUploadSession per attachment. Out of
+    // scope for step 7 — revisit when a real send fails with payload-too-large.
+    await graphRequest(this.getToken, '/me/sendMail', {
+      method: 'POST',
+      body: { message, saveToSentItems: true },
+    })
   }
 
-  async saveDraft(_draft: Draft): Promise<MessageId> {
-    throw new NotImplementedError('saveDraft')
+  async saveDraft(draft: Draft): Promise<MessageId> {
+    const created = await graphRequest<{ id: string }>(
+      this.getToken,
+      '/me/messages',
+      { method: 'POST', body: toGraphMessage(draft) },
+    )
+
+    if (draft.attachments?.length) {
+      for (const att of draft.attachments) {
+        await graphRequest(
+          this.getToken,
+          `/me/messages/${encodeURIComponent(created.id)}/attachments`,
+          { method: 'POST', body: toGraphFileAttachment(att) },
+        )
+      }
+    }
+
+    return created.id
   }
 
-  async move(_id: MessageId, _dest: FolderId): Promise<void> {
-    throw new NotImplementedError('move')
+  async move(id: MessageId, dest: FolderId): Promise<void> {
+    // Graph assigns a new MessageId to the moved item; we discard it (per spec,
+    // move returns void). The cache refresh in step 8 picks up the new ID.
+    await graphRequest(
+      this.getToken,
+      `/me/messages/${encodeURIComponent(id)}/move`,
+      { method: 'POST', body: { destinationId: dest } },
+    )
   }
 
-  async delete(_id: MessageId, _permanent?: boolean): Promise<void> {
-    throw new NotImplementedError('delete')
+  async delete(id: MessageId, permanent?: boolean): Promise<void> {
+    if (permanent) {
+      await graphRequest(
+        this.getToken,
+        `/me/messages/${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+      )
+      return
+    }
+    await graphRequest(
+      this.getToken,
+      `/me/messages/${encodeURIComponent(id)}/move`,
+      { method: 'POST', body: { destinationId: 'deleteditems' } },
+    )
   }
 
-  async setFlags(_id: MessageId, _flags: FlagUpdate): Promise<void> {
-    throw new NotImplementedError('setFlags')
+  async setFlags(id: MessageId, flags: FlagUpdate): Promise<void> {
+    const patch: { isRead?: boolean; flag?: { flagStatus: 'flagged' | 'notFlagged' } } = {}
+    if (flags.read !== undefined) patch.isRead = flags.read
+    if (flags.flagged !== undefined) {
+      patch.flag = { flagStatus: flags.flagged ? 'flagged' : 'notFlagged' }
+    }
+    if (Object.keys(patch).length === 0) return
+
+    await graphRequest(
+      this.getToken,
+      `/me/messages/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: patch },
+    )
   }
 
   search(_query: SearchQuery): AsyncIterable<MessageHeader> {
