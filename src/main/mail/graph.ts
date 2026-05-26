@@ -17,6 +17,7 @@ import { graphRequest, type GetTokenFn } from './graph-http'
 import {
   fetchAttachment,
   fetchFullMessage,
+  fetchSearch,
   toGraphFileAttachment,
   toGraphMessage,
   type GraphMessageInput,
@@ -157,8 +158,13 @@ export class GraphProvider implements MailProvider {
     )
   }
 
-  search(_query: SearchQuery): AsyncIterable<MessageHeader> {
-    throw new NotImplementedError('search')
+  async *search(query: SearchQuery): AsyncIterable<MessageHeader> {
+    const results = await fetchSearch(
+      this.getToken,
+      query.text,
+      query.limit ?? 100,
+    )
+    for (const m of results) yield m
   }
 
   watch(_folder?: FolderId): AsyncIterable<MailEvent> {

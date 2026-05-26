@@ -13,7 +13,14 @@ import {
 import { GraphProvider } from './mail/graph'
 import { MailCache } from './mail/cache'
 import { SyncScheduler } from './mail/sync'
-import type { Draft, FlagUpdate, ListOpts, MailEvent } from '../shared/mail'
+import type {
+  Draft,
+  FlagUpdate,
+  ListOpts,
+  MailEvent,
+  MessageHeader,
+  SearchQuery,
+} from '../shared/mail'
 
 let mainWindow: BrowserWindow | null = null
 let db: Database.Database | null = null
@@ -179,6 +186,22 @@ function registerIpcHandlers(): void {
     }
     if (!graphProvider) throw new Error('mail: provider not initialized')
     return graphProvider.setFlags(id, flags as FlagUpdate)
+  })
+
+  ipcMain.handle('cairn:mail:search', async (_, query: unknown) => {
+    if (typeof query !== 'object' || query === null) {
+      throw new TypeError('mail:search: query must be an object')
+    }
+    const q = query as SearchQuery
+    if (typeof q.text !== 'string') {
+      throw new TypeError('mail:search: query.text must be a string')
+    }
+    if (!graphProvider) throw new Error('mail: provider not initialized')
+    const out: MessageHeader[] = []
+    for await (const m of graphProvider.search(q)) {
+      out.push(m)
+    }
+    return out
   })
 }
 

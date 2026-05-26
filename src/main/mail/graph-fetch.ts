@@ -193,6 +193,28 @@ export async function fetchFullMessage(
   return { message, folderId: m.parentFolderId ?? '' }
 }
 
+export async function fetchSearch(
+  getToken: GetTokenFn,
+  text: string,
+  limit: number,
+): Promise<MessageHeader[]> {
+  // Graph's $search returns results in relevance order and rejects
+  // $orderby. Quotes around the query are required; the wrapper escapes
+  // them in the URL query string.
+  const response: GraphPaginated<GraphMessage> = await graphRequest(
+    getToken,
+    '/me/messages',
+    {
+      query: {
+        $search: `"${text}"`,
+        $top: limit,
+        $select: MESSAGE_SELECT,
+      },
+    },
+  )
+  return response.value.map(toMessageHeader)
+}
+
 export async function fetchAttachment(
   getToken: GetTokenFn,
   messageId: string,

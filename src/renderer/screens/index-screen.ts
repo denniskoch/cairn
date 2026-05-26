@@ -1,6 +1,7 @@
 import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import { ComposeScreen } from './compose'
+import { SearchResultsScreen } from './search-results'
 import type { Screen, ScreenContext } from './types'
 import { ViewScreen } from './view'
 
@@ -13,6 +14,12 @@ export class IndexScreen implements Screen {
   private ctx: ScreenContext | null = null
   private loading = false
   private unsubscribe: (() => void) | null = null
+
+  // Search mode state (active while user is typing in the / prompt).
+  private searchMode = false
+  private searchInput = ''
+  private searchCursor = 0
+  private searchUnsubscribe: (() => void) | null = null
 
   constructor(
     private readonly folderId: string,
@@ -34,6 +41,7 @@ export class IndexScreen implements Screen {
   }
 
   exit(): void {
+    if (this.searchMode) this.exitSearchMode()
     this.unsubscribe?.()
     this.unsubscribe = null
     this.ctx = null
@@ -124,24 +132,138 @@ export class IndexScreen implements Screen {
       s.text(row, 41, subject, baseAttrs)
     }
 
-    s.statusBar([
-      [
-        { key: '?', label: 'Help' },
-        { key: 'C', label: 'Compose' },
-        { key: 'R', label: 'Reply' },
-        { key: 'D', label: 'Delete' },
-        { key: 'U', label: 'Unread' },
-        { key: '/', label: 'Search' },
-      ],
-      [
-        { key: 'Enter', label: 'Open' },
-        { key: 'Q', label: 'Folders' },
-        { key: '↑↓', label: 'Navigate' },
-        { key: 'O', label: 'Other' },
-      ],
-    ])
+    if (this.searchMode) {
+      this.renderSearchPrompt(s)
+    } else {
+      s.statusBar([
+        [
+          { key: '?', label: 'Help' },
+          { key: 'C', label: 'Compose' },
+          { key: 'R', label: 'Reply' },
+          { key: 'D', label: 'Delete' },
+          { key: 'U', label: 'Unread' },
+          { key: '/', label: 'Search' },
+        ],
+        [
+          { key: 'Enter', label: 'Open' },
+          { key: 'Q', label: 'Folders' },
+          { key: '↑↓', label: 'Navigate' },
+          { key: 'O', label: 'Other' },
+        ],
+      ])
+    }
 
     s.flush()
+  }
+
+  private renderSearchPrompt(
+    s: import('../surface').Surface,
+  ): void {
+    const hintRow = s.rows - 2
+    const inputRow = s.rows - 1
+    s.fill(hintRow, 0, s.cols, ' ')
+    s.fill(inputRow, 0, s.cols, ' ')
+    s.text(hintRow, 0, 'Enter to search   Esc or ^C to cancel', {
+      fg: 'brightBlack',
+    })
+    const label = 'Search: '
+    s.text(inputRow, 0, label, { bold: true })
+    s.text(inputRow, label.length, this.searchInput)
+    s.setCursor(inputRow, label.length + this.searchCursor)
+  }
+
+  private enterSearchMode(): void {
+    if (!this.ctx || this.searchMode) return
+    this.searchMode = true
+    this.searchInput = ''
+    this.searchCursor = 0
+    this.ctx.dispatcher.push(this.searchKeymap())
+    this.searchUnsubscribe = this.ctx.onTextInput((data) => {
+      this.handleSearchInput(data)
+    })
+    this.ctx.invalidate()
+  }
+
+  private exitSearchMode(): void {
+    if (!this.searchMode) return
+    this.searchMode = false
+    this.ctx?.dispatcher.pop()
+    this.searchUnsubscribe?.()
+    this.searchUnsubscribe = null
+    this.ctx?.invalidate()
+  }
+
+  private handleSearchInput(data: string): void {
+    let inserted = false
+    for (const ch of data) {
+      const code = ch.charCodeAt(0)
+      if (code < 0x20 || code >= 0x7f) continue
+      this.searchInput =
+        this.searchInput.slice(0, this.searchCursor) +
+        ch +
+        this.searchInput.slice(this.searchCursor)
+      this.searchCursor++
+      inserted = true
+    }
+    if (inserted) this.ctx?.invalidate()
+  }
+
+  private async submitSearch(): Promise<void> {
+    const query = this.searchInput.trim()
+    const ctx = this.ctx
+    this.exitSearchMode()
+    if (!query || !ctx) return
+    try {
+      const results = await window.cairn.mail.search({ text: query, limit: 100 })
+      void ctx.router.push(new SearchResultsScreen(query, results))
+    } catch (err) {
+      console.warn('search failed:', err)
+    }
+  }
+
+  private searchKeymap(): KeyMap {
+    return {
+      Enter: () => void this.submitSearch(),
+      Escape: () => this.exitSearchMode(),
+      'Ctrl+C': () => this.exitSearchMode(),
+      Backspace: () => {
+        if (this.searchCursor > 0) {
+          this.searchInput =
+            this.searchInput.slice(0, this.searchCursor - 1) +
+            this.searchInput.slice(this.searchCursor)
+          this.searchCursor--
+          this.ctx?.invalidate()
+        }
+      },
+      Delete: () => {
+        if (this.searchCursor < this.searchInput.length) {
+          this.searchInput =
+            this.searchInput.slice(0, this.searchCursor) +
+            this.searchInput.slice(this.searchCursor + 1)
+          this.ctx?.invalidate()
+        }
+      },
+      Left: () => {
+        if (this.searchCursor > 0) {
+          this.searchCursor--
+          this.ctx?.invalidate()
+        }
+      },
+      Right: () => {
+        if (this.searchCursor < this.searchInput.length) {
+          this.searchCursor++
+          this.ctx?.invalidate()
+        }
+      },
+      Home: () => {
+        this.searchCursor = 0
+        this.ctx?.invalidate()
+      },
+      End: () => {
+        this.searchCursor = this.searchInput.length
+        this.ctx?.invalidate()
+      },
+    }
   }
 
   keymap(): KeyMap {
@@ -195,6 +317,7 @@ export class IndexScreen implements Screen {
           console.warn('setFlags failed:', err)
         }
       },
+      '/': () => this.enterSearchMode(),
     }
   }
 }

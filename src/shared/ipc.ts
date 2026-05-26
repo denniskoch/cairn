@@ -9,6 +9,7 @@ import type {
   Message,
   MessageHeader,
   MessageId,
+  SearchQuery,
 } from './mail'
 
 export type AuthStatus = {
@@ -44,6 +45,7 @@ export interface CairnApi {
     move(id: MessageId, dest: FolderId): Promise<void>
     delete(id: MessageId, permanent?: boolean): Promise<void>
     setFlags(id: MessageId, flags: FlagUpdate): Promise<void>
+    search(query: SearchQuery): Promise<MessageHeader[]>
     onEvent(cb: (event: MailEvent) => void): () => void
   }
 }

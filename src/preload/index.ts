@@ -30,6 +30,7 @@ const api: CairnApi = {
       ipcRenderer.invoke('cairn:mail:delete', id, permanent),
     setFlags: (id, flags) =>
       ipcRenderer.invoke('cairn:mail:setFlags', id, flags),
+    search: (query) => ipcRenderer.invoke('cairn:mail:search', query),
     onEvent: (cb) => {
       const handler = (_event: IpcRendererEvent, mailEvent: MailEvent) => cb(mailEvent)
       ipcRenderer.on('cairn:mail:event', handler)
