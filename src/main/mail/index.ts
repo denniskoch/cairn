@@ -1,0 +1,5 @@
+export type { MailProvider } from './provider'
+export { GraphProvider } from './graph'
+export { ImapProvider } from './imap'
+export { MailError, NotImplementedError } from './errors'
+export type { MailErrorCode } from './errors'
