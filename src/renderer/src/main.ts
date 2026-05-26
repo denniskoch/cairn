@@ -8,15 +8,16 @@ import '../../shared/ipc'
 import { XtermSurface } from '../surface'
 import { KeybindDispatcher } from '../keybind'
 import { HelpScreen, MainMenuScreen, Router } from '../screens'
+import { CLASSIC, resolveTheme } from '../themes'
 
 const term = new Terminal({
   fontFamily: '"JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace',
   fontSize: 14,
   cursorBlink: false,
-  theme: {
-    background: '#000000',
-    foreground: '#33ff33',
-  },
+  // Initial theme: classic. Bootstrap below re-applies the user's saved
+  // pref once it's loaded. Setting one here so the brief auth-gate
+  // output before bootstrap reads the same as the eventual screen.
+  theme: CLASSIC.xterm,
 })
 
 const fit = new FitAddon()
@@ -75,7 +76,18 @@ async function runInteractiveAuth(): Promise<{ email: string } | { error: string
   }
 }
 
+async function applyThemeFromPref(): Promise<void> {
+  try {
+    const name = await window.cairn.prefs.get('theme.name')
+    const theme = resolveTheme(name)
+    term.options.theme = theme.xterm
+  } catch (err) {
+    console.warn('theme: applying saved theme failed, sticking with default:', err)
+  }
+}
+
 async function bootstrap(): Promise<void> {
+  await applyThemeFromPref()
   const status = await window.cairn.auth.status()
 
   if (!status.encryptionAvailable) {
