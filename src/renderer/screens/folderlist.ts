@@ -1,5 +1,6 @@
 import type { Folder } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
+import { IndexScreen } from './index-screen'
 import type { Screen, ScreenContext } from './types'
 
 export class FolderlistScreen implements Screen {
@@ -7,13 +8,22 @@ export class FolderlistScreen implements Screen {
   private depths = new Map<string, number>()
   private cursor = 0
   private ctx: ScreenContext | null = null
+  private unsubscribe: (() => void) | null = null
 
   async enter(ctx: ScreenContext): Promise<void> {
     this.ctx = ctx
+    this.unsubscribe = window.cairn.mail.onEvent((event) => {
+      if (event.type === 'new') {
+        // New mail bumps unread counts — refresh the whole tree.
+        void this.loadFolders()
+      }
+    })
     await this.loadFolders()
   }
 
   exit(): void {
+    this.unsubscribe?.()
+    this.unsubscribe = null
     this.ctx = null
   }
 
@@ -101,8 +111,9 @@ export class FolderlistScreen implements Screen {
       J: down,
       N: down,
       Enter: () => {
-        // index screen lands in step 12 — placeholder for now.
-        this.ctx?.invalidate()
+        const folder = this.folders[this.cursor]
+        if (!folder || !this.ctx) return
+        void this.ctx.router.push(new IndexScreen(folder.id, folder.name))
       },
       L: async () => {
         await this.loadFolders()

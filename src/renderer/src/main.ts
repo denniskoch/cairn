@@ -92,18 +92,14 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  // Authenticated — hand control to the router.
+  // Authenticated — hand control to the router. Screens self-subscribe to
+  // mail events in their enter()/exit() lifecycle, so no top-level
+  // subscription needed here.
   clearViewport()
   const surface = new XtermSurface(term)
   const dispatcher = new KeybindDispatcher(term)
   const router = new Router(surface, dispatcher)
   const folderlist = new FolderlistScreen()
-
-  window.cairn.mail.onEvent((event) => {
-    if (event.type === 'new') {
-      void folderlist.refresh()
-    }
-  })
 
   dispatcher.start()
   await router.push(folderlist)
