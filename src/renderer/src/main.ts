@@ -34,12 +34,21 @@ try {
 fit.fit()
 window.addEventListener('resize', () => fit.fit())
 
-term.writeln('Cairn — pre-alpha')
-term.writeln('')
-term.writeln('IPC sanity check...')
+void (async () => {
+  term.writeln('Cairn — pre-alpha')
+  term.writeln('')
 
-void window.cairn.ping().then((reply) => {
+  term.writeln('IPC sanity check (ping)...')
+  const reply = await window.cairn.ping()
   term.writeln(`  main process replied: ${reply}`)
   term.writeln('')
-  term.writeln('Step 1 OK.')
-})
+
+  term.writeln('SQLite sanity check (prefs)...')
+  const previous = await window.cairn.prefs.get('launch.count')
+  const count = previous ? parseInt(previous, 10) + 1 : 1
+  await window.cairn.prefs.set('launch.count', String(count))
+  term.writeln(`  launch count: ${count}`)
+  term.writeln('')
+
+  term.writeln('Step 2 OK.')
+})()
