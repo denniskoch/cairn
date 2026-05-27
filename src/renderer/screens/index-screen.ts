@@ -20,6 +20,11 @@ export class IndexScreen implements Screen {
   private loading = false
   private loadingMore = false
   private nextCursor: string | undefined
+  // Real bottom of the folder. Set when a loadMore call comes back with
+  // zero new messages AND no nextCursor — meaning both cache and Graph
+  // have nothing older. Stops the scroll-load loop from hammering Graph
+  // on every keypress once the user reaches the end.
+  private exhausted = false
   private error: string | null = null
   private unsubscribe: (() => void) | null = null
 
@@ -73,6 +78,7 @@ export class IndexScreen implements Screen {
       })
       this.messages = result.messages
       this.nextCursor = result.nextCursor
+      this.exhausted = false
       if (this.cursor >= this.messages.length) {
         this.cursor = Math.max(0, this.messages.length - 1)
       }
@@ -86,19 +92,32 @@ export class IndexScreen implements Screen {
   }
 
   private async loadMore(): Promise<void> {
-    if (this.loadingMore || !this.nextCursor) return
+    if (this.loadingMore || this.exhausted) return
+    // Fall back to the tail message's receivedAt when cache reported no
+    // nextCursor — that happens when initialSync hasn't yet filled cache
+    // past the first page. Without this, the user is stuck at ~100 even
+    // though Graph has older messages waiting.
+    const cursor = this.nextCursor ?? this.tailCursor()
+    if (!cursor) return
     this.loadingMore = true
     this.ctx?.invalidate()
     try {
       const result = await window.cairn.mail.listMessages(this.folderId, {
         limit: FETCH_LIMIT,
-        cursor: this.nextCursor,
+        cursor,
       })
       const existing = new Set(this.messages.map((m) => m.id))
+      let added = 0
       for (const m of result.messages) {
-        if (!existing.has(m.id)) this.messages.push(m)
+        if (!existing.has(m.id)) {
+          this.messages.push(m)
+          added++
+        }
       }
       this.nextCursor = result.nextCursor
+      if (added === 0 && !result.nextCursor) {
+        this.exhausted = true
+      }
     } catch (err) {
       console.warn('loadMore failed:', err)
     } finally {
@@ -107,8 +126,15 @@ export class IndexScreen implements Screen {
     }
   }
 
+  private tailCursor(): string | undefined {
+    const last = this.messages[this.messages.length - 1]
+    if (!last) return undefined
+    // Cache cursors are received_at ms timestamps (see MailCache.getMessageHeaders).
+    return String(last.receivedAt.getTime())
+  }
+
   private maybeLoadMore(): void {
-    if (!this.nextCursor || this.loadingMore) return
+    if (this.loadingMore || this.exhausted || this.messages.length === 0) return
     if (this.cursor >= this.messages.length - LOAD_MORE_THRESHOLD) {
       void this.loadMore()
     }
