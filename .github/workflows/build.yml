@@ -75,7 +75,34 @@ jobs:
         # this works without extra setup.
         run: npm ci
 
+      # electron-builder pulls the version from package.json, not from the
+      # git tag. On tag pushes we rewrite the package version from the tag
+      # name (stripping the leading `v`) so installer filenames and the
+      # in-app About string match the release. --no-git-tag-version skips
+      # the commit/tag that `npm version` would otherwise try to create.
+      # `shell: bash` because Windows runners default to PowerShell where
+      # ${VAR#prefix} doesn't expand; Git Bash ships on all GH runners.
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version --no-git-tag-version --allow-same-version "$VERSION"
+
+      # ----- Build + sign -----
+      #
+      # mac / linux / non-tag win: single-pass `npm run package:<target>`.
+      #
+      # Windows tag builds: two-pass. electron-builder first emits the
+      # unpacked app dir (`dist/win-unpacked/`), we sign Cairn.exe inside
+      # it via Azure Trusted Signing, then re-invoke electron-builder with
+      # `--prepackaged` so the installer is built from the already-signed
+      # app dir. Without this the NSIS installer would be signed but the
+      # Cairn.exe extracted from it (the binary the user actually runs)
+      # would not be, and SmartScreen would warn on every launch.
+
       - name: Package
+        if: '!(matrix.target == ''win'' && startsWith(github.ref, ''refs/tags/v''))'
         env:
           # Skip macOS code signing entirely. Without this, electron-builder
           # tries to auto-discover a signing identity from the runner's
@@ -87,11 +114,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run package:${{ matrix.target }}
 
-      # ----- Windows code signing (tag pushes only) -----
-      # Azure Trusted Signing is Microsoft's managed signing service —
-      # cheaper than buying an OV/EV cert and avoids the SmartScreen
-      # reputation cliff over time. Signing happens before upload-artifact
-      # so the artifact already contains the signed .exe.
+      - name: Package (unpacked, for signing)
+        if: matrix.target == 'win' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --dir
 
       - name: Azure login
         if: matrix.target == 'win' && startsWith(github.ref, 'refs/tags/v')
@@ -101,7 +128,24 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sign Windows binaries
+      - name: Sign app binary
+        if: matrix.target == 'win' && startsWith(github.ref, 'refs/tags/v')
+        uses: azure/trusted-signing-action@v0.5.0
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: dennis-koch
+          certificate-profile-name: public-trust
+          files-folder: ./dist/win-unpacked
+          files-folder-filter: exe
+          files-folder-recurse: true
+
+      - name: Package (installer from signed unpacked)
+        if: matrix.target == 'win' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --prepackaged dist/win-unpacked
+
+      - name: Sign installer
         if: matrix.target == 'win' && startsWith(github.ref, 'refs/tags/v')
         uses: azure/trusted-signing-action@v0.5.0
         with:
