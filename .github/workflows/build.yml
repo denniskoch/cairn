@@ -118,7 +118,12 @@ jobs:
         if: matrix.target == 'win' && startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win --dir
+        # `npm run build` is the electron-vite step that produces
+        # `out/main/index.js` — `electron-builder` packages from `out/`
+        # so this has to run first. `package:win` normally chains both;
+        # here we run them separately so we can insert signing between
+        # the unpacked dir and the installer.
+        run: npm run build && npx electron-builder --win --dir
 
       - name: Azure login
         if: matrix.target == 'win' && startsWith(github.ref, 'refs/tags/v')
