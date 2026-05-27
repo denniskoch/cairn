@@ -75,10 +75,16 @@ export async function graphRequest<T>(
     )
   }
 
+  // 204 No Content and any other 2xx response with an empty body must not
+  // be JSON-parsed — Graph's /sendMail returns 202 with no body, and
+  // calling response.json() on that throws "Unexpected end of JSON input"
+  // even though the request succeeded.
   if (response.status === 204) {
     return undefined as T
   }
-  return (await response.json()) as T
+  const text = await response.text()
+  if (!text) return undefined as T
+  return JSON.parse(text) as T
 }
 
 function buildUrl(path: string, query?: Query): string {

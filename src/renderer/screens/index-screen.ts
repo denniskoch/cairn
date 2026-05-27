@@ -339,6 +339,24 @@ export class IndexScreen implements Screen {
         this.error = null
         void this.loadMessages()
       },
+      D: async () => {
+        const m = this.messages[this.cursor]
+        if (!m) return
+        // Optimistic: drop from the local list immediately so the cursor
+        // advances even if Graph is slow. Restore on failure.
+        const removed = this.messages.splice(this.cursor, 1)[0]
+        if (this.cursor >= this.messages.length) {
+          this.cursor = Math.max(0, this.messages.length - 1)
+        }
+        this.ctx?.invalidate()
+        try {
+          await window.cairn.mail.delete(removed.id, false)
+        } catch (err) {
+          this.messages.splice(this.cursor, 0, removed)
+          this.ctx?.invalidate()
+          console.warn('delete failed:', err)
+        }
+      },
     }
   }
 
@@ -350,6 +368,7 @@ export class IndexScreen implements Screen {
         { key: 'Enter', description: 'Open the highlighted message' },
         { key: 'U', description: 'Toggle read / unread state' },
         { key: 'C', description: 'Compose a new message' },
+        { key: 'D', description: 'Delete (move to Deleted Items)' },
         { key: 'L', description: 'Refresh / retry on error' },
         { key: '/', description: 'Search across all folders' },
         { key: 'Q', description: 'Back to folder list' },

@@ -285,6 +285,21 @@ export class ViewScreen implements Screen {
           ),
         )
       },
+      D: async () => {
+        if (!this.ctx || !this.message) return
+        const id = this.message.id
+        // Mutate the shared nav.messages array so the underlying IndexScreen
+        // sees the deletion when we pop back to it. Then pop and fire the
+        // Graph call. If it fails we don't restore the view — by then the
+        // user is back on the index and would have to L-refresh to reconcile.
+        this.nav.messages.splice(this.nav.index, 1)
+        void this.ctx.router.pop()
+        try {
+          await window.cairn.mail.delete(id, false)
+        } catch (err) {
+          console.warn('delete failed:', err)
+        }
+      },
     }
   }
 
@@ -313,6 +328,7 @@ export class ViewScreen implements Screen {
         { key: 'R', description: 'Reply to sender' },
         { key: 'A', description: 'Reply to all recipients' },
         { key: 'F', description: 'Forward this message' },
+        { key: 'D', description: 'Delete (move to Deleted Items)' },
         { key: 'H', description: 'Toggle brief / full headers' },
         { key: 'V', description: 'View attachments (pick + save to disk)' },
         { key: 'L', description: 'Reload / retry on error' },
