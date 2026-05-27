@@ -8,7 +8,7 @@ import '../../shared/ipc'
 import { XtermSurface } from '../surface'
 import { KeybindDispatcher } from '../keybind'
 import { HelpScreen, MainMenuScreen, ReAuthScreen, Router } from '../screens'
-import { CLASSIC, resolveTheme } from '../themes'
+import { CLASSIC, resolveTheme, setTerminal } from '../themes'
 import * as syncStatus from '../sync-status'
 
 const term = new Terminal({
@@ -29,6 +29,7 @@ const host = document.getElementById('terminal')
 if (!host) throw new Error('terminal mount point missing')
 
 term.open(host)
+setTerminal(term)
 
 try {
   term.loadAddon(new WebglAddon())

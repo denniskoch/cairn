@@ -6,6 +6,7 @@ import { ComposeScreen } from './compose'
 import { FolderlistScreen } from './folderlist'
 import { HelpScreen } from './help'
 import { IndexScreen } from './index-screen'
+import { SetupScreen } from './setup'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
 const APP_TITLE = 'CAIRN α'
@@ -52,7 +53,7 @@ const OPTIONS: MenuOption[] = [
     key: 'S',
     label: 'SETUP',
     desc: 'Configure Cairn Options',
-    action: (self) => self.notImplemented('Setup'),
+    action: (self) => self.openSetup(),
   },
   {
     key: 'Q',
@@ -126,6 +127,11 @@ export class MainMenuScreen implements Screen {
   openHelp(): void {
     if (!this.ctx) return
     void this.ctx.router.push(new HelpScreen(this.helpInfo()))
+  }
+
+  openSetup(): void {
+    if (!this.ctx) return
+    void this.ctx.router.push(new SetupScreen())
   }
 
   notImplemented(name: string): void {

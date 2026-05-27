@@ -9,3 +9,4 @@ export {
   THEMES,
   resolveTheme,
 } from './palette'
+export { applyTheme, setTerminal } from './runtime'
