@@ -107,23 +107,27 @@ jobs:
           # Skip macOS code signing entirely. Without this, electron-builder
           # tries to auto-discover a signing identity from the runner's
           # keychain and emits noisy warnings when it doesn't find one.
+          # The same flag also stops Windows from invoking signtool.exe
+          # with no certificate configured.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          # GitHub token isn't strictly needed for unsigned builds but
-          # electron-builder occasionally probes it for release publishing.
-          # Passing the auto-provided token quiets the probe.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run package:${{ matrix.target }}
+        # `-- --publish never` forwards `--publish never` to electron-builder
+        # so it doesn't try to publish to GitHub Releases on its own. Our
+        # `release` job below is the single publisher; without this flag
+        # electron-builder sees the git tag + an inferred GITHUB_TOKEN and
+        # races our release job, producing duplicate Draft releases.
+        run: npm run package:${{ matrix.target }} -- --publish never
 
       - name: Package (unpacked, for signing)
         if: matrix.target == 'win' && startsWith(github.ref, 'refs/tags/v')
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         # `npm run build` is the electron-vite step that produces
         # `out/main/index.js` — `electron-builder` packages from `out/`
         # so this has to run first. `package:win` normally chains both;
         # here we run them separately so we can insert signing between
-        # the unpacked dir and the installer.
-        run: npm run build && npx electron-builder --win --dir
+        # the unpacked dir and the installer. `--publish never` keeps
+        # electron-builder out of GitHub Releases (see comment above).
+        run: npm run build && npx electron-builder --win --dir --publish never
 
       - name: Azure login
         if: matrix.target == 'win' && startsWith(github.ref, 'refs/tags/v')
@@ -147,8 +151,8 @@ jobs:
       - name: Package (installer from signed unpacked)
         if: matrix.target == 'win' && startsWith(github.ref, 'refs/tags/v')
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win --prepackaged dist/win-unpacked
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win --prepackaged dist/win-unpacked --publish never
 
       - name: Sign installer
         if: matrix.target == 'win' && startsWith(github.ref, 'refs/tags/v')
