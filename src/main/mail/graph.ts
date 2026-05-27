@@ -12,7 +12,7 @@ import type {
   SearchQuery,
 } from '../../shared/mail'
 import type { MailProvider } from './provider'
-import { NotImplementedError } from './errors'
+import { MailError, NotImplementedError } from './errors'
 import { graphRequest, type GetTokenFn } from './graph-http'
 import {
   fetchAttachment,
@@ -156,20 +156,33 @@ export class GraphProvider implements MailProvider {
   }
 
   async delete(id: MessageId, permanent?: boolean): Promise<void> {
-    this.cache.deleteMessage(id)
-    if (permanent) {
-      await graphRequest(
-        this.getToken,
-        `/me/messages/${encodeURIComponent(id)}`,
-        { method: 'DELETE' },
-      )
-      return
+    // Don't drop the cache row until Graph confirms — otherwise a
+    // transient failure leaves the renderer rolling back a message
+    // that's already gone from cache, producing a phantom row.
+    // 404 is the exception: Graph doesn't know this id (stale after a
+    // server-side move or external client), so reconcile silently.
+    try {
+      if (permanent) {
+        await graphRequest(
+          this.getToken,
+          `/me/messages/${encodeURIComponent(id)}`,
+          { method: 'DELETE' },
+        )
+      } else {
+        await graphRequest(
+          this.getToken,
+          `/me/messages/${encodeURIComponent(id)}/move`,
+          { method: 'POST', body: { destinationId: 'deleteditems' } },
+        )
+      }
+    } catch (err) {
+      if (err instanceof MailError && err.code === 'NOT_FOUND') {
+        this.cache.deleteMessage(id)
+        return
+      }
+      throw err
     }
-    await graphRequest(
-      this.getToken,
-      `/me/messages/${encodeURIComponent(id)}/move`,
-      { method: 'POST', body: { destinationId: 'deleteditems' } },
-    )
+    this.cache.deleteMessage(id)
   }
 
   async setFlags(id: MessageId, flags: FlagUpdate): Promise<void> {
