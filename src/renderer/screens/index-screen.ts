@@ -1,7 +1,7 @@
 import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
-import { ComposeScreen } from './compose'
+import { ComposeScreen, type ReplyKind } from './compose'
 import { SearchResultsScreen } from './search-results'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 import { ViewScreen } from './view'
@@ -238,6 +238,8 @@ export class IndexScreen implements Screen {
           { key: '?', label: 'Help' },
           { key: 'C', label: 'Compose' },
           { key: 'R', label: 'Reply' },
+          { key: 'A', label: 'Reply-all' },
+          { key: 'F', label: 'Forward' },
           { key: 'D', label: 'Delete' },
           { key: 'U', label: 'Unread' },
           { key: '/', label: 'Search' },
@@ -414,6 +416,9 @@ export class IndexScreen implements Screen {
         if (!this.ctx) return
         void this.ctx.router.push(new ComposeScreen())
       },
+      R: () => void this.openReply('reply'),
+      A: () => void this.openReply('replyAll'),
+      F: () => void this.openReply('forward'),
       U: async () => {
         const m = this.messages[this.cursor]
         if (!m) return
@@ -438,6 +443,27 @@ export class IndexScreen implements Screen {
       D: () => void this.deleteCurrent(),
       Delete: () => void this.deleteCurrent(),
       Backspace: () => void this.deleteCurrent(),
+    }
+  }
+
+  private async openReply(kind: ReplyKind): Promise<void> {
+    const m = this.messages[this.cursor]
+    if (!m || !this.ctx) return
+    try {
+      // Header doesn't carry body/headers, which the reply quote needs.
+      const [full, status] = await Promise.all([
+        window.cairn.mail.getMessage(m.id),
+        window.cairn.auth.status(),
+      ])
+      void this.ctx.router.push(
+        new ComposeScreen({
+          kind,
+          original: full,
+          userEmail: status.email ?? '',
+        }),
+      )
+    } catch (err) {
+      console.warn(`${kind}: failed to load message:`, err)
     }
   }
 
@@ -471,6 +497,9 @@ export class IndexScreen implements Screen {
         { key: 'Enter', description: 'Open the highlighted message' },
         { key: 'U', description: 'Toggle read / unread state' },
         { key: 'C', description: 'Compose a new message' },
+        { key: 'R', description: 'Reply to the highlighted message' },
+        { key: 'A', description: 'Reply to all recipients' },
+        { key: 'F', description: 'Forward this message' },
         { key: 'D / Del / Bksp', description: 'Delete (move to Deleted Items)' },
         { key: 'L', description: 'Refresh / retry on error' },
         { key: '/', description: 'Search across all folders' },
