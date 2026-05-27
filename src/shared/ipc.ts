@@ -47,6 +47,11 @@ export interface CairnApi {
     delete(id: MessageId, permanent?: boolean): Promise<void>
     setFlags(id: MessageId, flags: FlagUpdate): Promise<void>
     search(query: SearchQuery): Promise<MessageHeader[]>
+    /** Tells the main-process sync scheduler which folder the user is
+     * currently looking at. The scheduler folds it into its periodic poll
+     * so new messages show up live, not just for the inbox. Pass null when
+     * the user navigates away from any folder view. */
+    setCurrentFolder(folderId: FolderId | null): Promise<void>
     saveAttachment(
       messageId: MessageId,
       attachmentId: string,

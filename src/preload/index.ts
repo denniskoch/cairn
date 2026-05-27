@@ -38,6 +38,8 @@ const api: CairnApi = {
     setFlags: (id, flags) =>
       ipcRenderer.invoke('cairn:mail:setFlags', id, flags),
     search: (query) => ipcRenderer.invoke('cairn:mail:search', query),
+    setCurrentFolder: (folderId) =>
+      ipcRenderer.invoke('cairn:mail:setCurrentFolder', folderId),
     saveAttachment: (messageId, attachmentId, suggestedName) =>
       ipcRenderer.invoke(
         'cairn:mail:saveAttachment',

@@ -16,6 +16,7 @@ export class SyncScheduler {
   readonly events = new EventEmitter()
   private inboxTimer: NodeJS.Timeout | null = null
   private inflight = new Set<string>()
+  private currentFolderId: string | null = null
 
   constructor(
     private readonly cache: MailCache,
@@ -25,9 +26,7 @@ export class SyncScheduler {
   start(): void {
     if (this.inboxTimer) return
     this.inboxTimer = setInterval(() => {
-      this.refreshFolder('inbox').catch((err) => {
-        console.warn('sync: inbox refresh failed:', err)
-      })
+      this.pollWatched()
     }, INBOX_INTERVAL_MS)
   }
 
@@ -35,6 +34,33 @@ export class SyncScheduler {
     if (this.inboxTimer) {
       clearInterval(this.inboxTimer)
       this.inboxTimer = null
+    }
+  }
+
+  /** The renderer sets this to whatever folder the user is currently
+   * viewing so the periodic poller picks up new messages there too,
+   * not only in the inbox. Pass null when no folder is open.
+   *
+   * Does NOT trigger an immediate refresh — listMessages already kicks
+   * the right call (firstPage for empty cache, refreshFolder for
+   * populated cache). Racing with it here would steal the inflight slot
+   * from firstPage and leave the UI showing "(no messages)" until the
+   * background initialSync finishes. */
+  setCurrentFolder(id: string | null): void {
+    this.currentFolderId = id
+  }
+
+  /** Poll the folder the user is looking at first so newer messages
+   * there appear without waiting on inbox; fall back to inbox so
+   * background notifications still work when the user is elsewhere. */
+  private pollWatched(): void {
+    const order: string[] = []
+    if (this.currentFolderId) order.push(this.currentFolderId)
+    if (!order.includes('inbox')) order.push('inbox')
+    for (const folder of order) {
+      this.refreshFolder(folder).catch((err) => {
+        console.warn(`sync: ${folder} refresh failed:`, err)
+      })
     }
   }
 
@@ -123,6 +149,36 @@ export class SyncScheduler {
       }
     } finally {
       this.endSync(folderId)
+    }
+  }
+
+  /** Pages further into history than the initial bootstrap covered.
+   * Called when the renderer scrolls past what's in cache. Does NOT touch
+   * the high-water mark — that tracks how far forward we've synced, and
+   * backfill works the other direction. Returns the number of new messages
+   * inserted into the cache so the caller knows whether to keep paging. */
+  async backfill(
+    folderId: string,
+    beforeReceivedAtMs: number,
+    limit: number,
+  ): Promise<number> {
+    const key = `backfill:${folderId}:${beforeReceivedAtMs}`
+    if (this.inflight.has(key)) return 0
+    this.beginSync(key)
+    try {
+      const filter = `receivedDateTime lt ${new Date(beforeReceivedAtMs).toISOString()}`
+      const result = await fetchMessagesWindow(this.getToken, folderId, {
+        filter,
+        limit,
+      })
+      let inserted = 0
+      for (const m of result.messages) {
+        if (!this.cache.hasMessage(m.id)) inserted++
+        this.cache.upsertMessageHeader(folderId, m)
+      }
+      return inserted
+    } finally {
+      this.endSync(key)
     }
   }
 

@@ -62,16 +62,39 @@ export class GraphProvider implements MailProvider {
       this.sync.initialSync(folder).catch((err) => {
         console.warn('sync: background bootstrap failed:', err)
       })
-    } else {
+    } else if (!opts.cursor) {
+      // First page reload — pull any new mail. Backfill (cursor-driven
+      // paging into history) doesn't need the forward refresh.
       this.sync.refreshFolder(folder).catch((err) => {
         console.warn('sync: folder refresh failed:', err)
       })
     }
-    return this.cache.getMessageHeaders(folder, {
-      limit: opts.limit,
+
+    const limit = opts.limit ?? 50
+    let result = this.cache.getMessageHeaders(folder, {
+      limit,
       cursor: opts.cursor,
       unreadOnly: opts.unreadOnly,
     })
+
+    // Backfill from Graph when the user paged past the cache. Keep going
+    // until either we have a full page or Graph runs out (which we detect
+    // by backfill returning zero new rows).
+    if (opts.cursor && !result.nextCursor && result.messages.length < limit) {
+      const beforeMs = parseInt(opts.cursor, 10)
+      if (Number.isFinite(beforeMs)) {
+        const inserted = await this.sync.backfill(folder, beforeMs, limit * 2)
+        if (inserted > 0) {
+          result = this.cache.getMessageHeaders(folder, {
+            limit,
+            cursor: opts.cursor,
+            unreadOnly: opts.unreadOnly,
+          })
+        }
+      }
+    }
+
+    return result
   }
 
   async getMessage(id: MessageId): Promise<Message> {

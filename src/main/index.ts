@@ -119,6 +119,15 @@ function registerIpcHandlers(): void {
     return graphProvider.listFolders()
   })
 
+  ipcMain.handle('cairn:mail:setCurrentFolder', (_, folderId: unknown) => {
+    if (folderId !== null && typeof folderId !== 'string') {
+      throw new TypeError('mail:setCurrentFolder: folderId must be a string or null')
+    }
+    // Pre-auth (no sync yet) the renderer shouldn't be calling this, but
+    // tolerate it so a stray call doesn't crash main.
+    sync?.setCurrentFolder(folderId)
+  })
+
   ipcMain.handle(
     'cairn:mail:listMessages',
     (_, folderId: unknown, opts: unknown) => {

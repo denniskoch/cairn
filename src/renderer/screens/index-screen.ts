@@ -7,6 +7,10 @@ import type { HelpInfo, Screen, ScreenContext } from './types'
 import { ViewScreen } from './view'
 
 const FETCH_LIMIT = 100
+// When the cursor is within this many rows of the bottom of the loaded
+// set, kick a background load-more so the user doesn't notice the page
+// boundary while scrolling.
+const LOAD_MORE_THRESHOLD = 20
 
 export class IndexScreen implements Screen {
   private messages: MessageHeader[] = []
@@ -14,6 +18,8 @@ export class IndexScreen implements Screen {
   private scrollOffset = 0
   private ctx: ScreenContext | null = null
   private loading = false
+  private loadingMore = false
+  private nextCursor: string | undefined
   private error: string | null = null
   private unsubscribe: (() => void) | null = null
 
@@ -36,9 +42,17 @@ export class IndexScreen implements Screen {
     this.ctx = ctx
     this.unsubscribe = window.cairn.mail.onEvent((event) => {
       if (event.type === 'new' && event.folder === this.folderId) {
-        void this.loadMessages()
+        // Prepend rather than reloading the first page so a scrolled-back
+        // user keeps their backfilled history (and their cursor position
+        // relative to the message they were reading).
+        if (!this.messages.some((m) => m.id === event.message.id)) {
+          this.messages.unshift(event.message)
+          if (this.cursor > 0) this.cursor++
+          this.ctx?.invalidate()
+        }
       }
     })
+    void window.cairn.mail.setCurrentFolder(this.folderId)
     await this.loadMessages()
   }
 
@@ -46,6 +60,7 @@ export class IndexScreen implements Screen {
     if (this.searchMode) this.exitSearchMode()
     this.unsubscribe?.()
     this.unsubscribe = null
+    void window.cairn.mail.setCurrentFolder(null)
     this.ctx = null
   }
 
@@ -57,6 +72,7 @@ export class IndexScreen implements Screen {
         limit: FETCH_LIMIT,
       })
       this.messages = result.messages
+      this.nextCursor = result.nextCursor
       if (this.cursor >= this.messages.length) {
         this.cursor = Math.max(0, this.messages.length - 1)
       }
@@ -66,6 +82,35 @@ export class IndexScreen implements Screen {
     } finally {
       this.loading = false
       this.ctx?.invalidate()
+    }
+  }
+
+  private async loadMore(): Promise<void> {
+    if (this.loadingMore || !this.nextCursor) return
+    this.loadingMore = true
+    this.ctx?.invalidate()
+    try {
+      const result = await window.cairn.mail.listMessages(this.folderId, {
+        limit: FETCH_LIMIT,
+        cursor: this.nextCursor,
+      })
+      const existing = new Set(this.messages.map((m) => m.id))
+      for (const m of result.messages) {
+        if (!existing.has(m.id)) this.messages.push(m)
+      }
+      this.nextCursor = result.nextCursor
+    } catch (err) {
+      console.warn('loadMore failed:', err)
+    } finally {
+      this.loadingMore = false
+      this.ctx?.invalidate()
+    }
+  }
+
+  private maybeLoadMore(): void {
+    if (!this.nextCursor || this.loadingMore) return
+    if (this.cursor >= this.messages.length - LOAD_MORE_THRESHOLD) {
+      void this.loadMore()
     }
   }
 
@@ -293,6 +338,7 @@ export class IndexScreen implements Screen {
     const down = (): void => {
       if (this.cursor < this.messages.length - 1) {
         this.cursor++
+        this.maybeLoadMore()
         this.ctx?.invalidate()
       }
     }
