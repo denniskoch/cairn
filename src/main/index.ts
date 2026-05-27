@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
@@ -24,17 +24,39 @@ import type {
   SearchQuery,
 } from '../shared/mail'
 
+// Dev mode runs under the Electron binary, whose bundle metadata says
+// "Electron" — that's what the macOS dock tooltip shows. Override so
+// it reads "Cairn" instead. No-op in packaged builds (the .app bundle's
+// own Info.plist takes precedence).
+app.setName('Cairn')
+process.title = 'Cairn'
+
 let mainWindow: BrowserWindow | null = null
 let db: Database.Database | null = null
 let graphProvider: GraphProvider | null = null
 let sync: SyncScheduler | null = null
 
+/** Load build/icon.png for use as the dev-mode window/dock icon. In
+ * packaged builds, electron-builder bakes the icon into the bundle
+ * (.icns on macOS, .ico on Windows, AppImage embedded on Linux) from
+ * the same source, and the OS picks it up automatically — no need to
+ * set it on BrowserWindow there. */
+function loadDevIcon(): Electron.NativeImage | undefined {
+  if (app.isPackaged) return undefined
+  const icon = nativeImage.createFromPath(
+    join(__dirname, '../../build/icon.png'),
+  )
+  return icon.isEmpty() ? undefined : icon
+}
+
 function createWindow(): void {
+  const icon = loadDevIcon()
   mainWindow = new BrowserWindow({
     width: 1024,
     height: 768,
     show: false,
     backgroundColor: '#000000',
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -261,6 +283,14 @@ function registerIpcHandlers(): void {
 
 app.whenReady().then(async () => {
   try {
+    // In dev on macOS, the dock shows Electron's stock icon. Override
+    // with cairn's so it matches the packaged build. No-op on other
+    // platforms (app.dock is undefined) and when packaged (the bundle
+    // .icns is what the OS uses).
+    if (!app.isPackaged && process.platform === 'darwin') {
+      const icon = loadDevIcon()
+      if (icon) app.dock?.setIcon(icon)
+    }
     db = openDatabase(join(app.getPath('userData'), 'cairn.db'))
     registerIpcHandlers()
     await initAuth(db)
