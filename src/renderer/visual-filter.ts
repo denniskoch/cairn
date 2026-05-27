@@ -7,7 +7,6 @@ export const VISUAL_FILTERS = [
   'scanlines',
   'blur',
   'phosphor',
-  'crt',
 ] as const
 
 export type VisualFilter = (typeof VISUAL_FILTERS)[number]
@@ -17,7 +16,6 @@ export const VISUAL_FILTER_DESCRIPTIONS: Record<VisualFilter, string> = {
   scanlines: 'Horizontal stripes like an old CRT',
   blur: 'Soft analog blur',
   phosphor: 'Phosphor-style glow around glyphs',
-  crt: 'Scanlines + blur + phosphor glow — full vintage',
 }
 
 export const DEFAULT_VISUAL_FILTER: VisualFilter = 'none'

@@ -39,10 +39,9 @@ body {
 }
 
 /* ---- Visual filters ---- */
-/* Applied via body classes (vf-scanlines, vf-blur, vf-phosphor, vf-crt).
- * The runtime applies one at a time; vf-crt is the kitchen-sink combo.
- * Targets the xterm container so the rendered canvas plus all of xterm's
- * internal DOM gets the effect. */
+/* Applied via body classes (vf-scanlines, vf-blur, vf-phosphor). The
+ * runtime applies at most one at a time. Targets the xterm container so
+ * the rendered canvas plus all of xterm's internal DOM gets the effect. */
 
 body.vf-blur #terminal {
   filter: blur(0.5px);
@@ -52,12 +51,7 @@ body.vf-phosphor #terminal {
   filter: drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.5));
 }
 
-body.vf-crt #terminal {
-  filter: blur(0.4px) drop-shadow(0 0 1.4px rgba(255, 255, 255, 0.55));
-}
-
-body.vf-scanlines #terminal::after,
-body.vf-crt #terminal::after {
+body.vf-scanlines #terminal::after {
   content: '';
   position: absolute;
   inset: 0;
