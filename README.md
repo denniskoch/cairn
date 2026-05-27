@@ -83,7 +83,7 @@ A small sample. Every screen has its own `?` help with the full list.
 Prerequisites: Node 20+, macOS / Windows / Linux. The native modules (`better-sqlite3`) rebuild against Electron's ABI automatically during `npm install`.
 
 ```bash
-git clone https://git.kochlabs.io/dkoch/cairn.git
+git clone https://github.com/denniskoch/cairn.git
 cd cairn
 make install
 make dev
