@@ -114,6 +114,16 @@ export class IndexScreen implements Screen {
     }
   }
 
+  /** Visible message rows, mirroring render()'s layout: surface minus
+   * header row(s) and status bar. Returns 1 as a floor so PgUp/PgDn
+   * always move at least one row even on tiny terminals. */
+  private visibleRows(): number {
+    const s = this.ctx?.surface
+    if (!s) return 1
+    const startRow = this.error ? 3 : 2
+    return Math.max(1, s.rows - startRow - 2)
+  }
+
   /** Called by the renderer's mail:new subscription when this is the visible folder. */
   async refresh(): Promise<void> {
     await this.loadMessages()
@@ -342,11 +352,25 @@ export class IndexScreen implements Screen {
         this.ctx?.invalidate()
       }
     }
+    const pageUp = (): void => {
+      if (this.cursor === 0) return
+      this.cursor = Math.max(0, this.cursor - this.visibleRows())
+      this.ctx?.invalidate()
+    }
+    const pageDown = (): void => {
+      const last = this.messages.length - 1
+      if (this.cursor === last) return
+      this.cursor = Math.min(last, this.cursor + this.visibleRows())
+      this.maybeLoadMore()
+      this.ctx?.invalidate()
+    }
     return {
       Up: up,
       K: up,
       Down: down,
       J: down,
+      PageUp: pageUp,
+      PageDown: pageDown,
       Q: () => {
         void this.ctx?.router.pop()
       },
@@ -411,6 +435,7 @@ export class IndexScreen implements Screen {
       title: `Message index (${this.folderName})`,
       entries: [
         { key: '↑ ↓ / j k', description: 'Move cursor between messages' },
+        { key: 'PgUp PgDn', description: 'Jump up / down by a page' },
         { key: 'Enter', description: 'Open the highlighted message' },
         { key: 'U', description: 'Toggle read / unread state' },
         { key: 'C', description: 'Compose a new message' },
