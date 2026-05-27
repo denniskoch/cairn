@@ -1,5 +1,6 @@
 import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
+import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { ComposeScreen } from './compose'
 import { SearchResultsScreen } from './search-results'
 import type { HelpInfo, Screen, ScreenContext } from './types'
@@ -94,9 +95,11 @@ export class IndexScreen implements Screen {
     const headerLeft = `Cairn — ${this.folderName}`
     const headerRight = `${unread} unread / ${total} loaded`
     s.text(0, 1, headerLeft, { inverse: true, bold: true })
-    if (headerLeft.length + headerRight.length + 4 <= s.cols) {
-      s.text(0, s.cols - headerRight.length - 1, headerRight, { inverse: true })
+    if (headerLeft.length + headerRight.length + 6 <= s.cols) {
+      // Leave 4 cols on the right for the syncing indicator.
+      s.text(0, s.cols - headerRight.length - 4, headerRight, { inverse: true })
     }
+    drawSyncIndicator(s)
 
     const startRow = this.error ? 3 : 2
     if (this.error) {

@@ -1,5 +1,6 @@
 import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
+import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 import { ViewScreen } from './view'
 
@@ -38,11 +39,12 @@ export class SearchResultsScreen implements Screen {
     s.fill(0, 0, s.cols, ' ', { inverse: true })
     const headerLeft = `Cairn — Search: "${this.query}"`
     const headerRight = `${this.results.length} result${this.results.length === 1 ? '' : 's'}`
-    s.text(0, 1, headerLeft.slice(0, s.cols - headerRight.length - 4), {
+    s.text(0, 1, headerLeft.slice(0, s.cols - headerRight.length - 7), {
       inverse: true,
       bold: true,
     })
-    s.text(0, s.cols - headerRight.length - 1, headerRight, { inverse: true })
+    s.text(0, s.cols - headerRight.length - 4, headerRight, { inverse: true })
+    drawSyncIndicator(s)
 
     const startRow = 2
     const visibleRows = Math.max(0, s.rows - startRow - 2)

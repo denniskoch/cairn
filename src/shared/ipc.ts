@@ -49,6 +49,11 @@ export interface CairnApi {
     search(query: SearchQuery): Promise<MessageHeader[]>
     onEvent(cb: (event: MailEvent) => void): () => void
   }
+  sync: {
+    /** Fires true when a background sync starts (going from idle to busy),
+     * false when the last in-flight sync finishes. */
+    onActiveChanged(cb: (active: boolean) => void): () => void
+  }
 }
 
 declare global {

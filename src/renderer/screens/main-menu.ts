@@ -1,6 +1,7 @@
 import type { Folder } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
+import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { ComposeScreen } from './compose'
 import { FolderlistScreen } from './folderlist'
 import { HelpScreen } from './help'
@@ -197,10 +198,12 @@ export class MainMenuScreen implements Screen {
       if (folderCol > 18 + 'MAIN MENU'.length + 2) {
         s.text(0, folderCol, folderText, { inverse: true })
       }
-      if (countText.length + 1 < s.cols) {
-        s.text(0, s.cols - countText.length - 1, countText, { inverse: true })
+      if (countText.length + 4 < s.cols) {
+        // Leave 4 cols on the right for the syncing indicator.
+        s.text(0, s.cols - countText.length - 4, countText, { inverse: true })
       }
     }
+    drawSyncIndicator(s)
   }
 
   private renderOptions(s: Surface): void {

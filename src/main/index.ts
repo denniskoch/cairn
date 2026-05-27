@@ -67,6 +67,12 @@ function initMailLayer(accountId: string): void {
     }
   })
 
+  sync.events.on('syncStateChanged', (active: boolean) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('cairn:sync:active', active)
+    }
+  })
+
   sync.start()
 }
 

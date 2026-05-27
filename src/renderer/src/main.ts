@@ -9,6 +9,7 @@ import { XtermSurface } from '../surface'
 import { KeybindDispatcher } from '../keybind'
 import { HelpScreen, MainMenuScreen, ReAuthScreen, Router } from '../screens'
 import { CLASSIC, resolveTheme } from '../themes'
+import * as syncStatus from '../sync-status'
 
 const term = new Terminal({
   fontFamily: '"JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace',
@@ -143,6 +144,13 @@ async function bootstrap(): Promise<void> {
   // so popping returns them there once they've signed back in.
   window.cairn.auth.onExpired(() => {
     void router.push(new ReAuthScreen())
+  })
+
+  // Track background sync state and invalidate the router so header bars
+  // can show / hide a syncing indicator.
+  window.cairn.sync.onActiveChanged((active) => {
+    syncStatus.setActive(active)
+    router.invalidate()
   })
 
   dispatcher.start()

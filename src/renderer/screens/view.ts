@@ -1,6 +1,7 @@
 import type { Message, MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
+import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { ComposeScreen, type ReplyKind } from './compose'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
@@ -96,9 +97,10 @@ export class ViewScreen implements Screen {
     // Header bar
     s.fill(0, 0, s.cols, ' ', { inverse: true })
     const counter = `[${this.nav.index + 1}/${this.nav.messages.length}]`
-    const title = `Cairn — ${m.subject.slice(0, s.cols - counter.length - 5)}`
+    const title = `Cairn — ${m.subject.slice(0, s.cols - counter.length - 8)}`
     s.text(0, 1, title, { inverse: true, bold: true })
-    s.text(0, s.cols - counter.length - 1, counter, { inverse: true })
+    s.text(0, s.cols - counter.length - 4, counter, { inverse: true })
+    drawSyncIndicator(s)
 
     // Header block
     let row = 2

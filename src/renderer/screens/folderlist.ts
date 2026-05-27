@@ -1,5 +1,6 @@
 import type { Folder } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
+import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { ComposeScreen } from './compose'
 import { IndexScreen } from './index-screen'
 import type { HelpInfo, Screen, ScreenContext } from './types'
@@ -55,6 +56,7 @@ export class FolderlistScreen implements Screen {
     // Header: full-width inverse bar
     s.fill(0, 0, s.cols, ' ', { inverse: true })
     s.text(0, 1, 'Cairn — Folder list', { inverse: true, bold: true })
+    drawSyncIndicator(s)
 
     // Error banner (between header and folder list when present)
     const startRow = this.error ? 3 : 2

@@ -46,6 +46,15 @@ const api: CairnApi = {
       }
     },
   },
+  sync: {
+    onActiveChanged: (cb) => {
+      const handler = (_event: IpcRendererEvent, active: boolean) => cb(active)
+      ipcRenderer.on('cairn:sync:active', handler)
+      return () => {
+        ipcRenderer.off('cairn:sync:active', handler)
+      }
+    },
+  },
 }
 
 contextBridge.exposeInMainWorld('cairn', api)

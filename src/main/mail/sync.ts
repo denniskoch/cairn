@@ -39,15 +39,40 @@ export class SyncScheduler {
   }
 
   async refreshFolderTree(): Promise<void> {
-    const folders = await fetchFolders(this.getToken)
-    for (const f of folders) {
-      this.cache.upsertFolder({
-        id: f.id,
-        name: f.name,
-        parentId: f.parentId ?? null,
-        unreadCount: f.unreadCount,
-        totalCount: f.totalCount,
-      })
+    const TREE_KEY = '__folder_tree__'
+    if (this.inflight.has(TREE_KEY)) return
+    this.beginSync(TREE_KEY)
+    try {
+      const folders = await fetchFolders(this.getToken)
+      for (const f of folders) {
+        this.cache.upsertFolder({
+          id: f.id,
+          name: f.name,
+          parentId: f.parentId ?? null,
+          unreadCount: f.unreadCount,
+          totalCount: f.totalCount,
+        })
+      }
+    } finally {
+      this.endSync(TREE_KEY)
+    }
+  }
+
+  /** Tracked inflight transitions. Emits 'syncStateChanged' on the
+   * empty ↔ non-empty edges so the renderer can show a single sync
+   * indicator without flickering per-folder. */
+  private beginSync(key: string): void {
+    const wasIdle = this.inflight.size === 0
+    this.inflight.add(key)
+    if (wasIdle && this.inflight.size > 0) {
+      this.events.emit('syncStateChanged', true)
+    }
+  }
+
+  private endSync(key: string): void {
+    this.inflight.delete(key)
+    if (this.inflight.size === 0) {
+      this.events.emit('syncStateChanged', false)
     }
   }
 
@@ -57,20 +82,20 @@ export class SyncScheduler {
    * kicking initialSync() in the background to continue the bootstrap. */
   async firstPage(folderId: string, limit: number): Promise<void> {
     if (this.inflight.has(folderId)) return
-    this.inflight.add(folderId)
+    this.beginSync(folderId)
     try {
       const result = await fetchMessagesWindow(this.getToken, folderId, { limit })
       for (const m of result.messages) {
         this.cache.upsertMessageHeader(folderId, m)
       }
     } finally {
-      this.inflight.delete(folderId)
+      this.endSync(folderId)
     }
   }
 
   async initialSync(folderId: string): Promise<void> {
     if (this.inflight.has(folderId)) return
-    this.inflight.add(folderId)
+    this.beginSync(folderId)
     try {
       let nextCursor: string | undefined
       let total = 0
@@ -97,7 +122,7 @@ export class SyncScheduler {
         this.cache.setHighWaterMark(folderId, maxReceivedAt)
       }
     } finally {
-      this.inflight.delete(folderId)
+      this.endSync(folderId)
     }
   }
 
@@ -110,7 +135,7 @@ export class SyncScheduler {
       return
     }
 
-    this.inflight.add(folderId)
+    this.beginSync(folderId)
     try {
       const filter = `receivedDateTime gt ${new Date(hwm).toISOString()}`
       let nextCursor: string | undefined
@@ -143,7 +168,7 @@ export class SyncScheduler {
         this.cache.setHighWaterMark(folderId, newHwm)
       }
     } finally {
-      this.inflight.delete(folderId)
+      this.endSync(folderId)
     }
   }
 }
