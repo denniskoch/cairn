@@ -1,0 +1,46 @@
+appId: io.kochlabs.cairn
+productName: Cairn
+copyright: Copyright © 2026 Dennis Koch
+
+# Output directory for the generated installers / archives. Gitignored.
+directories:
+  output: dist
+  buildResources: build
+
+# What ends up inside the app bundle.
+# - out/**: the electron-vite build (main, preload, renderer)
+# - package.json: needed for the runtime to resolve the main field
+# - LICENSE / NOTICE: redistribution requirements (Apache 2.0, SIL OFL)
+files:
+  - out/**/*
+  - package.json
+  - LICENSE
+  - NOTICE
+  - "!**/.DS_Store"
+
+# better-sqlite3 ships a native .node binding. It must be unpacked from
+# the asar archive at runtime so Node's dlopen can find it; otherwise the
+# packaged app fails to require the module.
+asarUnpack:
+  - "**/better_sqlite3.node"
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.productivity
+  # No notarization / signing for v1. macOS Gatekeeper will warn on first
+  # launch; users right-click → Open.
+
+win:
+  target:
+    - nsis
+    - zip
+  # No code-signing cert; SmartScreen will warn on first launch.
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Network
+  maintainer: Dennis Koch <drkoch@gmail.com>

@@ -4,9 +4,11 @@ node_modules/
 # Build output
 dist/
 out/
-build/
 release/
 *.tsbuildinfo
+
+# electron-builder resources directory (icons, etc.) is tracked, but
+# nothing in there right now — placeholder icon goes here when we ship.
 
 # Local databases (Cairn writes cairn.db to userData; these patterns catch
 # stray local copies and SQLite journals)
