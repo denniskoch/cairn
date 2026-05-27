@@ -159,11 +159,13 @@ async function bootstrap(): Promise<void> {
   })
 
   // Track background sync state and invalidate the router so header bars
-  // can show / hide a syncing indicator.
+  // can show / hide a syncing indicator. syncStatus runs an animation
+  // timer while active and fires onChange each frame, so we re-render the
+  // top screen on every tick — that's what makes the dot pulse.
   window.cairn.sync.onActiveChanged((active) => {
     syncStatus.setActive(active)
-    router.invalidate()
   })
+  syncStatus.onChange(() => router.invalidate())
 
   dispatcher.start()
   await router.push(new MainMenuScreen())
