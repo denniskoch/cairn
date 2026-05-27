@@ -17,7 +17,15 @@ export class KeybindDispatcher {
       // Only intercept keydown — keyup/keypress shouldn't dispatch.
       if (event.type !== 'keydown') return true
       const key = normalizeKey(event)
-      return !this.dispatch(key, event)
+      const claimed = this.dispatch(key, event)
+      if (claimed) {
+        // preventDefault stops xterm's hidden input textarea from also
+        // receiving the keystroke and firing it through onData. Without
+        // this, claimed printable keys (like the 'C' that triggers
+        // compose) still leak to the compose buffer as input.
+        event.preventDefault()
+      }
+      return !claimed
     })
   }
 
