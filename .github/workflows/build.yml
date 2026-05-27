@@ -1,0 +1,91 @@
+name: Build
+
+# Builds Cairn installers for macOS, Windows, and Linux.
+#
+# Triggers:
+#   - workflow_dispatch: manual via the Actions UI
+#   - push to v* tags: cuts artifacts for a release
+#
+# Outputs land as GitHub Actions artifacts on each job. For a release,
+# attaching them to a GitHub Release happens in a separate publish workflow
+# once we wire that up.
+#
+# All builds are unsigned for now:
+#   - macOS: CSC_IDENTITY_AUTO_DISCOVERY=false skips signing entirely.
+#     Gatekeeper warns on first launch; users right-click → Open.
+#   - Windows: no signing cert; SmartScreen warns on first launch.
+#   - Linux: no concept of signing.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+# Cancel in-flight builds when a new push to the same ref arrives.
+# Tagged releases will each have a unique ref so they don't cancel each other.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: mac
+            artifact_glob: |
+              dist/*.dmg
+              dist/*.zip
+          - os: windows-latest
+            target: win
+            artifact_glob: |
+              dist/*.exe
+              dist/*.zip
+          - os: ubuntu-latest
+            target: linux
+            artifact_glob: |
+              dist/*.AppImage
+              dist/*.deb
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # `npm ci` is reproducible from package-lock.json. The postinstall
+        # script runs electron-rebuild against better-sqlite3 — GitHub
+        # runners have python + a C++ toolchain installed by default so
+        # this works without extra setup.
+        run: npm ci
+
+      - name: Package
+        env:
+          # Skip macOS code signing entirely. Without this, electron-builder
+          # tries to auto-discover a signing identity from the runner's
+          # keychain and emits noisy warnings when it doesn't find one.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # GitHub token isn't strictly needed for unsigned builds but
+          # electron-builder occasionally probes it for release publishing.
+          # Passing the auto-provided token quiets the probe.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run package:${{ matrix.target }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cairn-${{ matrix.target }}
+          path: ${{ matrix.artifact_glob }}
+          retention-days: 30
+          if-no-files-found: error
