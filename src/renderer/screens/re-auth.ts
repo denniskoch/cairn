@@ -1,5 +1,6 @@
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
 const STATUS_FG_OK: Attrs = { fg: 'yellow' }
@@ -60,7 +61,7 @@ export class ReAuthScreen implements Screen {
     }
 
     if (this.statusMessage) {
-      const row = s.rows - 3
+      const row = s.rows - 3 - STATUS_BAR_CHROME
       s.fill(row, 0, s.cols, ' ')
       s.text(
         row,

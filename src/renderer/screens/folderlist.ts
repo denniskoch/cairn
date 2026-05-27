@@ -1,6 +1,7 @@
 import type { Folder } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import { ComposeScreen } from './compose'
 import { IndexScreen } from './index-screen'
 import type { HelpInfo, Screen, ScreenContext } from './types'
@@ -71,7 +72,7 @@ export class FolderlistScreen implements Screen {
     }
 
     // Folders, one per row
-    const visibleRows = s.rows - startRow - 2 // reserve 2 for status bar
+    const visibleRows = s.rows - startRow - 2 - STATUS_BAR_CHROME // 2 status lines + chrome pad
     for (let i = 0; i < this.folders.length && i < visibleRows; i++) {
       const f = this.folders[i]
       const row = startRow + i

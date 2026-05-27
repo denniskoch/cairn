@@ -1,6 +1,7 @@
 import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 import { ViewScreen } from './view'
 
@@ -47,7 +48,7 @@ export class SearchResultsScreen implements Screen {
     drawSyncIndicator(s)
 
     const startRow = 2
-    const visibleRows = Math.max(0, s.rows - startRow - 2)
+    const visibleRows = Math.max(0, s.rows - startRow - 2 - STATUS_BAR_CHROME)
     this.adjustScroll(visibleRows)
 
     if (this.results.length === 0) {

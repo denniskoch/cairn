@@ -1,5 +1,6 @@
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import {
   applyFilter,
@@ -50,7 +51,7 @@ export class VisualFilterPickerScreen implements Screen {
       const name = VISUAL_FILTERS[i]
       const desc = VISUAL_FILTER_DESCRIPTIONS[name]
       const row = startRow + i * 2
-      if (row >= s.rows - 4) break
+      if (row >= s.rows - 4 - STATUS_BAR_CHROME) break
       const isActive = i === this.cursor
       const rowAttrs: Attrs = isActive ? { inverse: true } : {}
 
@@ -63,7 +64,7 @@ export class VisualFilterPickerScreen implements Screen {
       s.text(row, indentCol + name.length + 3, desc, rowAttrs)
     }
 
-    const hintRow = s.rows - 4
+    const hintRow = s.rows - 4 - STATUS_BAR_CHROME
     if (hintRow > startRow + VISUAL_FILTERS.length * 2) {
       s.text(
         hintRow,

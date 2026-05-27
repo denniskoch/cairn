@@ -55,6 +55,13 @@ export interface Surface {
   flush(): void
 }
 
+/** Rows reserved around the status bar lines: one blank row above for
+ * breathing room, one bg-filled row below so the macOS window's rounded
+ * bottom corners eat the pad row instead of the actual menu text.
+ * Screens computing content height should subtract this in addition to
+ * their status-bar line count. */
+export const STATUS_BAR_CHROME = 2
+
 export const DEFAULT_ATTRS: Attrs = {}
 
 export function defaultCell(): Cell {

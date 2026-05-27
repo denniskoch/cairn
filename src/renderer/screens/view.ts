@@ -1,6 +1,7 @@
 import type { Message, MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { AttachmentPickerScreen } from './attachment-picker'
 import { ComposeScreen, type ReplyKind } from './compose'
@@ -108,21 +109,21 @@ export class ViewScreen implements Screen {
     const headerEntries = this.collectHeaderEntries(m)
     const labelAttrs: Attrs = { bold: true, fg: 'cyan' }
     for (const [label, value] of headerEntries) {
-      if (row >= s.rows - 3) break
+      if (row >= s.rows - 3 - STATUS_BAR_CHROME) break
       s.text(row, 2, `${label}:`.padEnd(10), labelAttrs)
       s.text(row, 12, value.slice(0, s.cols - 13))
       row++
     }
 
     // Separator
-    if (row < s.rows - 3) {
+    if (row < s.rows - 3 - STATUS_BAR_CHROME) {
       s.fill(row, 0, s.cols, '─', { fg: 'brightBlack' })
       row++
     }
 
     // Body
     const bodyStartRow = row
-    const bodyVisibleRows = Math.max(0, s.rows - bodyStartRow - 2)
+    const bodyVisibleRows = Math.max(0, s.rows - bodyStartRow - 2 - STATUS_BAR_CHROME)
     for (let i = 0; i < bodyVisibleRows; i++) {
       const lineIdx = this.scrollOffset + i
       if (lineIdx >= this.bodyLines.length) break
@@ -198,7 +199,7 @@ export class ViewScreen implements Screen {
   private pageDown(): void {
     if (!this.ctx || !this.message) return
     const s = this.ctx.surface
-    const bodyVisibleRows = Math.max(1, s.rows - this.bodyStartRow() - 2)
+    const bodyVisibleRows = Math.max(1, s.rows - this.bodyStartRow() - 2 - STATUS_BAR_CHROME)
     const max = Math.max(0, this.bodyLines.length - bodyVisibleRows)
     this.scrollOffset = Math.min(max, this.scrollOffset + bodyVisibleRows - 1)
     this.ctx.invalidate()
@@ -207,7 +208,7 @@ export class ViewScreen implements Screen {
   private pageUp(): void {
     if (!this.ctx || !this.message) return
     const s = this.ctx.surface
-    const bodyVisibleRows = Math.max(1, s.rows - this.bodyStartRow() - 2)
+    const bodyVisibleRows = Math.max(1, s.rows - this.bodyStartRow() - 2 - STATUS_BAR_CHROME)
     this.scrollOffset = Math.max(0, this.scrollOffset - (bodyVisibleRows - 1))
     this.ctx.invalidate()
   }
@@ -232,7 +233,7 @@ export class ViewScreen implements Screen {
       Down: () => {
         if (!this.ctx) return
         const s = this.ctx.surface
-        const bodyVisibleRows = Math.max(1, s.rows - this.bodyStartRow() - 2)
+        const bodyVisibleRows = Math.max(1, s.rows - this.bodyStartRow() - 2 - STATUS_BAR_CHROME)
         const max = Math.max(0, this.bodyLines.length - bodyVisibleRows)
         if (this.scrollOffset < max) {
           this.scrollOffset++

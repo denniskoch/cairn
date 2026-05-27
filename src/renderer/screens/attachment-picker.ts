@@ -1,6 +1,7 @@
 import type { AttachmentMeta } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
@@ -65,7 +66,10 @@ export class AttachmentPickerScreen implements Screen {
     drawSyncIndicator(s)
 
     const startRow = 2
-    const visibleRows = Math.max(0, s.rows - startRow - (this.statusMessage ? 3 : 2))
+    const visibleRows = Math.max(
+      0,
+      s.rows - startRow - (this.statusMessage ? 3 : 2) - STATUS_BAR_CHROME,
+    )
 
     if (this.attachments.length === 0) {
       s.text(startRow, 2, '(no attachments)', { fg: 'brightBlack' })
@@ -89,7 +93,7 @@ export class AttachmentPickerScreen implements Screen {
     }
 
     if (this.statusMessage) {
-      const row = s.rows - 3
+      const row = s.rows - 3 - STATUS_BAR_CHROME
       s.fill(row, 0, s.cols, ' ')
       s.text(
         row,

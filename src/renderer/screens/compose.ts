@@ -1,6 +1,7 @@
 import type { Address, Draft, Message } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
 type Field = 'to' | 'cc' | 'subject' | 'body'
@@ -343,7 +344,7 @@ export class ComposeScreen implements Screen {
     const statusMsgRows = this.statusMessage ? 1 : 0
     const bodyVisibleRows = Math.max(
       0,
-      s.rows - bodyStartRow - statusBarRows - statusMsgRows,
+      s.rows - bodyStartRow - statusBarRows - statusMsgRows - STATUS_BAR_CHROME,
     )
 
     // Scroll math: keep body cursor visible
@@ -363,7 +364,7 @@ export class ComposeScreen implements Screen {
 
     // Status message line (above status bar)
     if (this.statusMessage) {
-      const row = s.rows - statusBarRows - 1
+      const row = s.rows - statusBarRows - 1 - STATUS_BAR_CHROME
       s.fill(row, 0, s.cols, ' ')
       s.text(
         row,

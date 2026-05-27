@@ -60,7 +60,17 @@ export class XtermSurface implements Surface {
 
   statusBar(lines: StatusItem[][]): void {
     if (lines.length === 0) return
-    const startRow = this.rows - lines.length
+    // Layout, bottom-up:
+    //   rows-1               : bg-pad (inverse fill) — rounded corners cut into this
+    //   rows-2 .. rows-1-N   : status bar lines
+    //   rows-2-N             : blank breathing-room row above status bar
+    const bottomPadRow = this.rows - 1
+    this.current.fill(bottomPadRow, 0, this.cols, ' ', { inverse: true })
+    const startRow = this.rows - lines.length - 1
+    const topPadRow = startRow - 1
+    if (topPadRow >= 0) {
+      this.current.fill(topPadRow, 0, this.cols, ' ')
+    }
     for (let i = 0; i < lines.length; i++) {
       const row = startRow + i
       this.current.fill(row, 0, this.cols, ' ')

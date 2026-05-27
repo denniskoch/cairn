@@ -1,5 +1,6 @@
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { applyTheme, type Theme, THEMES } from '../themes'
 import type { HelpInfo, Screen, ScreenContext } from './types'
@@ -57,7 +58,7 @@ export class ThemePickerScreen implements Screen {
       const t = this.themeAt(i)
       if (!t) continue
       const row = startRow + i * 2
-      if (row >= s.rows - 4) break
+      if (row >= s.rows - 4 - STATUS_BAR_CHROME) break
       const isActive = i === this.cursor
       const rowAttrs: Attrs = isActive ? { inverse: true } : {}
 
@@ -72,7 +73,7 @@ export class ThemePickerScreen implements Screen {
       s.text(row, indentCol + t.name.length + 3, t.description, rowAttrs)
     }
 
-    const hintRow = s.rows - 4
+    const hintRow = s.rows - 4 - STATUS_BAR_CHROME
     if (hintRow > startRow + THEME_ORDER.length * 2) {
       s.text(
         hintRow,

@@ -1,5 +1,6 @@
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
 const KEY_COL = 4
@@ -21,8 +22,8 @@ export class HelpScreen implements Screen {
   }
 
   private maxVisibleRows(s: { rows: number }): number {
-    // 2 rows status bar + 2 rows header (title + blank).
-    return Math.max(0, s.rows - 4)
+    // 2 rows status bar + 2 rows header (title + blank) + chrome pad.
+    return Math.max(0, s.rows - 4 - STATUS_BAR_CHROME)
   }
 
   render(): void {

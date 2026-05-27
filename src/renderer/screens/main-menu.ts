@@ -1,6 +1,7 @@
 import type { Folder } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { ComposeScreen } from './compose'
 import { FolderlistScreen } from './folderlist'
@@ -166,7 +167,7 @@ export class MainMenuScreen implements Screen {
 
     if (this.statusMessage) {
       s.text(
-        s.rows - 3,
+        s.rows - 3 - STATUS_BAR_CHROME,
         2,
         this.statusMessage,
         this.statusIsError ? { fg: 'red' } : { fg: 'yellow' },
@@ -227,7 +228,7 @@ export class MainMenuScreen implements Screen {
     for (let i = 0; i < OPTIONS.length; i++) {
       const opt = OPTIONS[i]
       const row = startRow + i * rowSpacing
-      if (row >= s.rows - 5) break
+      if (row >= s.rows - 5 - STATUS_BAR_CHROME) break
       const isActive = i === this.cursor
 
       const keyCol = indentCol
@@ -254,7 +255,7 @@ export class MainMenuScreen implements Screen {
 
   private renderTagline(s: Surface): void {
     const line = 'Press "?" for help'
-    const row = s.rows - 4
+    const row = s.rows - 4 - STATUS_BAR_CHROME
     if (row < 0) return
     const col = Math.max(0, Math.floor((s.cols - line.length) / 2))
     s.text(row, col, line, { fg: 'brightBlack' })

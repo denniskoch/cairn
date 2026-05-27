@@ -1,5 +1,6 @@
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { DEFAULT_THEME_NAME } from '../themes'
 import { DEFAULT_VISUAL_FILTER } from '../visual-filter'
@@ -97,7 +98,7 @@ export class SetupScreen implements Screen {
     for (let i = 0; i < SETTINGS.length; i++) {
       const setting = SETTINGS[i]
       const row = startRow + i * 3
-      if (row >= s.rows - 4) break
+      if (row >= s.rows - 4 - STATUS_BAR_CHROME) break
       const isActive = i === this.cursor
       const rowAttrs: Attrs = isActive ? { inverse: true } : {}
 

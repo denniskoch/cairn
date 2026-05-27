@@ -1,6 +1,7 @@
 import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
+import { STATUS_BAR_CHROME } from '../surface/types'
 import { ComposeScreen, type ReplyKind } from './compose'
 import { SearchResultsScreen } from './search-results'
 import type { HelpInfo, Screen, ScreenContext } from './types'
@@ -147,7 +148,7 @@ export class IndexScreen implements Screen {
     const s = this.ctx?.surface
     if (!s) return 1
     const startRow = this.error ? 3 : 2
-    return Math.max(1, s.rows - startRow - 2)
+    return Math.max(1, s.rows - startRow - 2 - STATUS_BAR_CHROME)
   }
 
   /** Called by the renderer's mail:new subscription when this is the visible folder. */
@@ -193,7 +194,7 @@ export class IndexScreen implements Screen {
       })
     }
 
-    const visibleRows = s.rows - startRow - 2 // 2 rows reserved for status bar
+    const visibleRows = s.rows - startRow - 2 - STATUS_BAR_CHROME // 2 rows reserved for status bar
     this.adjustScroll(visibleRows)
 
     if (this.loading && this.messages.length === 0) {
@@ -259,8 +260,10 @@ export class IndexScreen implements Screen {
   private renderSearchPrompt(
     s: import('../surface').Surface,
   ): void {
-    const hintRow = s.rows - 2
-    const inputRow = s.rows - 1
+    // Search prompt replaces the status bar; mirror its top-pad/bottom-pad
+    // layout so the hint and input sit in the same rows the menu would use.
+    const hintRow = s.rows - 2 - 1
+    const inputRow = s.rows - 1 - 1
     s.fill(hintRow, 0, s.cols, ' ')
     s.fill(inputRow, 0, s.cols, ' ')
     s.text(hintRow, 0, 'Enter to search   Esc or ^C to cancel', {
