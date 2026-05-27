@@ -1,3 +1,22 @@
+/* Bundled monospace fonts. Loaded synchronously (font-display: block) so the
+ * terminal never paints in a fallback face — xterm.js measures cell width
+ * once and a font swap mid-session leaves the grid misaligned. See NOTICE
+ * for license attribution (both SIL OFL 1.1). */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../assets/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('../assets/fonts/IBMPlexMono-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
 * {
   box-sizing: border-box;
 }

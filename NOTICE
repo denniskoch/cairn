@@ -1,0 +1,35 @@
+Cairn
+Copyright 2026 Dennis Koch
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. See the LICENSE
+file in the root of this repository for the full terms.
+
+
+================================================================================
+Bundled third-party assets
+================================================================================
+
+This distribution includes the following third-party assets. Each is
+governed by its own license, reproduced alongside the asset in the source
+tree at the path indicated.
+
+--------------------------------------------------------------------------------
+JetBrains Mono
+--------------------------------------------------------------------------------
+Path:    src/renderer/assets/fonts/JetBrainsMono-Regular.woff2
+Source:  https://github.com/JetBrains/JetBrainsMono (v2.304)
+License: SIL Open Font License, Version 1.1
+         src/renderer/assets/fonts/JetBrainsMono-LICENSE.txt
+
+Copyright 2020 The JetBrains Mono Project Authors
+
+--------------------------------------------------------------------------------
+IBM Plex Mono
+--------------------------------------------------------------------------------
+Path:    src/renderer/assets/fonts/IBMPlexMono-Regular.woff2
+Source:  https://github.com/IBM/plex (@ibm/plex-mono@1.1.0)
+License: SIL Open Font License, Version 1.1
+         src/renderer/assets/fonts/IBMPlexMono-LICENSE.txt
+
+Copyright (c) 2017 IBM Corp. with Reserved Font Name "Plex"
