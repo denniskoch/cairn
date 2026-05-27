@@ -65,7 +65,7 @@ export class XtermSurface implements Surface {
     //   rows-2 .. rows-1-N   : status bar lines
     //   rows-2-N             : blank breathing-room row above status bar
     const bottomPadRow = this.rows - 1
-    this.current.fill(bottomPadRow, 0, this.cols, ' ', { inverse: true })
+    this.current.fill(bottomPadRow, 0, this.cols, ' ', { bg: 'black' })
     const startRow = this.rows - lines.length - 1
     const topPadRow = startRow - 1
     if (topPadRow >= 0) {

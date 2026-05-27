@@ -16,6 +16,9 @@ const term = new Terminal({
   fontFamily: '"JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace',
   fontSize: 14,
   cursorBlink: false,
+  // Cairn is a canvas, not a scrolling shell. No scrollback → mouse wheel
+  // can't drag the painted screen out of view.
+  scrollback: 0,
   // Initial theme: classic. Bootstrap below re-applies the user's saved
   // pref once it's loaded. Setting one here so the brief auth-gate
   // output before bootstrap reads the same as the eventual screen.
