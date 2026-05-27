@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openDatabase } from './db'
@@ -194,6 +195,43 @@ function registerIpcHandlers(): void {
     if (!graphProvider) throw new Error('mail: provider not initialized')
     return graphProvider.setFlags(id, flags as FlagUpdate)
   })
+
+  ipcMain.handle(
+    'cairn:mail:saveAttachment',
+    async (
+      _,
+      messageId: unknown,
+      attachmentId: unknown,
+      suggestedName: unknown,
+    ) => {
+      if (typeof messageId !== 'string') {
+        throw new TypeError('mail:saveAttachment: messageId must be a string')
+      }
+      if (typeof attachmentId !== 'string') {
+        throw new TypeError('mail:saveAttachment: attachmentId must be a string')
+      }
+      if (typeof suggestedName !== 'string') {
+        throw new TypeError('mail:saveAttachment: suggestedName must be a string')
+      }
+      if (!graphProvider) throw new Error('mail: provider not initialized')
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        return { saved: false as const }
+      }
+
+      const defaultPath = join(app.getPath('downloads'), suggestedName)
+      const chosen = await dialog.showSaveDialog(mainWindow, {
+        title: 'Save attachment',
+        defaultPath,
+      })
+      if (chosen.canceled || !chosen.filePath) {
+        return { saved: false as const }
+      }
+
+      const att = await graphProvider.getAttachment(messageId, attachmentId)
+      await writeFile(chosen.filePath, att.content)
+      return { saved: true as const, path: chosen.filePath }
+    },
+  )
 
   ipcMain.handle('cairn:mail:search', async (_, query: unknown) => {
     if (typeof query !== 'object' || query === null) {

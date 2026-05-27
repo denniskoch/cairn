@@ -38,6 +38,13 @@ const api: CairnApi = {
     setFlags: (id, flags) =>
       ipcRenderer.invoke('cairn:mail:setFlags', id, flags),
     search: (query) => ipcRenderer.invoke('cairn:mail:search', query),
+    saveAttachment: (messageId, attachmentId, suggestedName) =>
+      ipcRenderer.invoke(
+        'cairn:mail:saveAttachment',
+        messageId,
+        attachmentId,
+        suggestedName,
+      ),
     onEvent: (cb) => {
       const handler = (_event: IpcRendererEvent, mailEvent: MailEvent) => cb(mailEvent)
       ipcRenderer.on('cairn:mail:event', handler)

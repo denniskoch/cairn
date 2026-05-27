@@ -2,6 +2,7 @@ import type { Message, MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
+import { AttachmentPickerScreen } from './attachment-picker'
 import { ComposeScreen, type ReplyKind } from './compose'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
@@ -274,6 +275,16 @@ export class ViewScreen implements Screen {
       A: () => void this.openCompose('replyAll'),
       F: () => void this.openCompose('forward'),
       L: () => void this.loadMessage(),
+      V: () => {
+        if (!this.ctx || !this.message) return
+        void this.ctx.router.push(
+          new AttachmentPickerScreen(
+            this.message.id,
+            this.message.subject,
+            this.message.attachments,
+          ),
+        )
+      },
     }
   }
 
@@ -303,6 +314,7 @@ export class ViewScreen implements Screen {
         { key: 'A', description: 'Reply to all recipients' },
         { key: 'F', description: 'Forward this message' },
         { key: 'H', description: 'Toggle brief / full headers' },
+        { key: 'V', description: 'View attachments (pick + save to disk)' },
         { key: 'L', description: 'Reload / retry on error' },
         { key: 'Q', description: 'Back to message index' },
         { key: '?', description: 'Show this help' },

@@ -47,6 +47,11 @@ export interface CairnApi {
     delete(id: MessageId, permanent?: boolean): Promise<void>
     setFlags(id: MessageId, flags: FlagUpdate): Promise<void>
     search(query: SearchQuery): Promise<MessageHeader[]>
+    saveAttachment(
+      messageId: MessageId,
+      attachmentId: string,
+      suggestedName: string,
+    ): Promise<{ saved: true; path: string } | { saved: false }>
     onEvent(cb: (event: MailEvent) => void): () => void
   }
   sync: {
