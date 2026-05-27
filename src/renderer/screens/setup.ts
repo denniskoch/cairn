@@ -2,7 +2,9 @@ import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { DEFAULT_THEME_NAME } from '../themes'
+import { DEFAULT_VISUAL_FILTER } from '../visual-filter'
 import { ThemePickerScreen } from './theme-picker'
+import { VisualFilterPickerScreen } from './visual-filter-picker'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
 interface SettingRow {
@@ -25,6 +27,16 @@ const SETTINGS: SettingRow[] = [
       return v ?? DEFAULT_THEME_NAME
     },
     open: (self) => self.openThemePicker(),
+  },
+  {
+    id: 'visualFilter',
+    label: 'Visual filter',
+    description: 'CRT-style overlay: scanlines, blur, phosphor glow, etc.',
+    value: async () => {
+      const v = await window.cairn.prefs.get('visual.filter')
+      return v ?? DEFAULT_VISUAL_FILTER
+    },
+    open: (self) => self.openVisualFilterPicker(),
   },
 ]
 
@@ -56,6 +68,15 @@ export class SetupScreen implements Screen {
     // whatever the picker persisted (or didn't).
     void (async () => {
       await this.ctx?.router.push(new ThemePickerScreen(currentTheme))
+      await this.loadValues()
+    })()
+  }
+
+  openVisualFilterPicker(): void {
+    if (!this.ctx) return
+    const current = this.values['visualFilter'] ?? DEFAULT_VISUAL_FILTER
+    void (async () => {
+      await this.ctx?.router.push(new VisualFilterPickerScreen(current))
       await this.loadValues()
     })()
   }

@@ -10,6 +10,7 @@ import { KeybindDispatcher } from '../keybind'
 import { HelpScreen, MainMenuScreen, ReAuthScreen, Router } from '../screens'
 import { CLASSIC, resolveTheme, setTerminal } from '../themes'
 import * as syncStatus from '../sync-status'
+import { applyFilter as applyVisualFilter } from '../visual-filter'
 
 const term = new Terminal({
   fontFamily: '"JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace',
@@ -88,8 +89,18 @@ async function applyThemeFromPref(): Promise<void> {
   }
 }
 
+async function applyVisualFilterFromPref(): Promise<void> {
+  try {
+    const name = await window.cairn.prefs.get('visual.filter')
+    applyVisualFilter(name)
+  } catch (err) {
+    console.warn('visual filter: applying saved pref failed:', err)
+  }
+}
+
 async function bootstrap(): Promise<void> {
   await applyThemeFromPref()
+  await applyVisualFilterFromPref()
   const status = await window.cairn.auth.status()
 
   if (!status.encryptionAvailable) {

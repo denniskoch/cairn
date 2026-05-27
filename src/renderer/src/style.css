@@ -33,4 +33,41 @@ body {
 #terminal {
   width: 100vw;
   height: 100vh;
+  /* position: relative is required so the visual-filter ::after overlays
+   * (scanlines) can use position: absolute / inset: 0 to span the term. */
+  position: relative;
+}
+
+/* ---- Visual filters ---- */
+/* Applied via body classes (vf-scanlines, vf-blur, vf-phosphor, vf-crt).
+ * The runtime applies one at a time; vf-crt is the kitchen-sink combo.
+ * Targets the xterm container so the rendered canvas plus all of xterm's
+ * internal DOM gets the effect. */
+
+body.vf-blur #terminal {
+  filter: blur(0.5px);
+}
+
+body.vf-phosphor #terminal {
+  filter: drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.5));
+}
+
+body.vf-crt #terminal {
+  filter: blur(0.4px) drop-shadow(0 0 1.4px rgba(255, 255, 255, 0.55));
+}
+
+body.vf-scanlines #terminal::after,
+body.vf-crt #terminal::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.25) 2px,
+    rgba(0, 0, 0, 0.25) 3px
+  );
 }
