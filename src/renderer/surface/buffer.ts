@@ -1,6 +1,23 @@
 import { DEFAULT_ATTRS, defaultCell, type Attrs, type Cell } from './types'
 import { attrsEqual, attrsToAnsi } from './attrs'
 
+// Pictographic characters (emoji), the variation selectors that flip them
+// between text and emoji presentation, and the zero-width joiner that
+// builds compound emoji. Stripped from anything that hits the grid for
+// two reasons:
+//   1. They render as color glyphs from the system emoji font, clashing
+//      with the monochrome phosphor aesthetic.
+//   2. They're wide characters — each occupies two terminal cells but our
+//      CellGrid stores one char per cell, so xterm and the grid drift out
+//      of alignment after every emoji on a row.
+// Replaced with a single space so column positions downstream stay where
+// the screen code intended.
+const DISPLAY_STRIP_RE = /[\p{Extended_Pictographic}‍️︎]/gu
+
+function stripPictographs(s: string): string {
+  return s.replace(DISPLAY_STRIP_RE, ' ')
+}
+
 export class CellGrid {
   private data: Cell[]
 
@@ -18,26 +35,36 @@ export class CellGrid {
 
   cell(row: number, col: number, char: string, attrs: Attrs = DEFAULT_ATTRS): void {
     if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return
-    this.data[row * this.cols + col] = { char, attrs }
+    const cleaned = stripPictographs(char)
+    // After strip a single pictograph collapses to a single space; if the
+    // caller passed something multi-char into cell() (shouldn't happen
+    // normally) we take the first char.
+    this.data[row * this.cols + col] = {
+      char: cleaned.length > 0 ? cleaned[0] : ' ',
+      attrs,
+    }
   }
 
   text(row: number, col: number, str: string, attrs: Attrs = DEFAULT_ATTRS): void {
     if (row < 0 || row >= this.rows) return
-    for (let i = 0; i < str.length; i++) {
+    const cleaned = stripPictographs(str)
+    for (let i = 0; i < cleaned.length; i++) {
       const c = col + i
       if (c < 0) continue
       if (c >= this.cols) break
-      this.data[row * this.cols + c] = { char: str[i], attrs }
+      this.data[row * this.cols + c] = { char: cleaned[i], attrs }
     }
   }
 
   fill(row: number, col: number, width: number, char: string, attrs: Attrs = DEFAULT_ATTRS): void {
     if (row < 0 || row >= this.rows) return
+    const cleaned = stripPictographs(char)
+    const fillChar = cleaned.length > 0 ? cleaned[0] : ' '
     for (let i = 0; i < width; i++) {
       const c = col + i
       if (c < 0) continue
       if (c >= this.cols) break
-      this.data[row * this.cols + c] = { char, attrs }
+      this.data[row * this.cols + c] = { char: fillChar, attrs }
     }
   }
 
