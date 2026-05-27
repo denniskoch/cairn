@@ -52,11 +52,19 @@ export class SyncScheduler {
 
   /** Poll the folder the user is looking at first so newer messages
    * there appear without waiting on inbox; fall back to inbox so
-   * background notifications still work when the user is elsewhere. */
+   * background notifications still work when the user is elsewhere.
+   *
+   * IMPORTANT: use the real folder ID from cache, NOT Graph's 'inbox'
+   * well-known alias. The alias has no row in `folders`, so writes
+   * under that key never get a hwm and refreshFolder degrades to a
+   * 200-cap initialSync every cycle. Worse, messages stored under the
+   * alias collide by id with the real bucket, suppressing 'new' events
+   * when the real-ID poll later steals them back. */
   private pollWatched(): void {
     const order: string[] = []
     if (this.currentFolderId) order.push(this.currentFolderId)
-    if (!order.includes('inbox')) order.push('inbox')
+    const inboxId = this.cache.findFolderIdByName('Inbox')
+    if (inboxId && !order.includes(inboxId)) order.push(inboxId)
     for (const folder of order) {
       this.refreshFolder(folder).catch((err) => {
         console.warn(`sync: ${folder} refresh failed:`, err)

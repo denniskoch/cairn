@@ -78,6 +78,20 @@ export class MailCache {
       )
   }
 
+  /** Look up a folder's real provider ID by display name (case-insensitive).
+   * Returns null when listFolders hasn't populated yet. Use this instead of
+   * Graph's well-known aliases ('inbox', 'drafts', ...) for cache writes —
+   * the alias doesn't match the row in `folders`, which makes hwm/refresh
+   * machinery silently no-op. */
+  findFolderIdByName(name: string): string | null {
+    const row = this.db
+      .prepare(
+        `SELECT id FROM folders WHERE account_id = ? AND lower(name) = lower(?) LIMIT 1`,
+      )
+      .get(this.accountId, name) as { id: string } | undefined
+    return row?.id ?? null
+  }
+
   listFolders(): Folder[] {
     const rows = this.db
       .prepare(
