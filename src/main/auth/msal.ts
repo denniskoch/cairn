@@ -36,8 +36,33 @@ h1 { font-size: 18px; margin: 0 0 12px; }
 <body><h1>Cairn — sign-in failed</h1><p>Close this window and try again in Cairn.</p></body></html>`
 
 const cachePlugin: ICachePlugin = {
-  async beforeCacheAccess(_: TokenCacheContext) {
-    // Cache is loaded explicitly during restoreSession(); nothing per-access.
+  async beforeCacheAccess(context: TokenCacheContext) {
+    // MSAL Node v5's acquireTokenSilent calls tokenCache.overwriteCache(),
+    // which clears storage and then expects this hook to repopulate via
+    // deserialize(). A no-op here causes the in-memory tokens written by
+    // acquireTokenInteractive to be wiped before the first silent acquire,
+    // producing no_tokens_found. Load from db every time.
+    if (!db || !safeStorage.isEncryptionAvailable()) return
+    const row = (currentAccountId
+      ? db
+          .prepare('SELECT refresh_token_enc FROM auth_tokens WHERE account_id = ?')
+          .get(currentAccountId)
+      : db
+          .prepare(
+            `
+        SELECT t.refresh_token_enc
+        FROM accounts a JOIN auth_tokens t ON a.id = t.account_id
+        WHERE a.provider = 'graph'
+        LIMIT 1
+      `,
+          )
+          .get()) as { refresh_token_enc: Buffer } | undefined
+    if (!row) return
+    try {
+      context.tokenCache.deserialize(safeStorage.decryptString(row.refresh_token_enc))
+    } catch (err) {
+      console.warn('auth: failed to decrypt cached tokens, ignoring:', err)
+    }
   },
   async afterCacheAccess(context: TokenCacheContext) {
     if (!context.cacheHasChanged || !db || !currentAccountId) return
