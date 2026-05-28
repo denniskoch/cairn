@@ -250,13 +250,10 @@ export class FolderlistScreen implements Screen {
           this.ctx.invalidate()
         }
       },
-      '<': () => {
-        if (this.path.length === 0) return
-        this.path.pop()
-        this.cursor = 0
-        this.rebuild()
-        this.ctx?.invalidate()
-      },
+      // Alpine binds `<` and `,` to the same command — `<` requires
+      // Shift but `,` is the unshifted twin on US layouts.
+      '<': () => this.goUp(),
+      ',': () => this.goUp(),
       L: async () => {
         await this.loadFolders()
       },
@@ -287,6 +284,14 @@ export class FolderlistScreen implements Screen {
     await this.loadFolders()
   }
 
+  private goUp(): void {
+    if (this.path.length === 0) return
+    this.path.pop()
+    this.cursor = 0
+    this.rebuild()
+    this.ctx?.invalidate()
+  }
+
   helpInfo(): HelpInfo {
     return {
       title: 'Folder list',
@@ -297,7 +302,7 @@ export class FolderlistScreen implements Screen {
           description:
             'Open a folder for its messages, or drill into a [directory/]',
         },
-        { key: '<', description: 'Up one level (when inside a subfolder)' },
+        { key: '< / ,', description: 'Up one level (when inside a subfolder)' },
         { key: 'L', description: 'Refresh folder list from the server' },
         { key: 'C', description: 'Compose a new message' },
         { key: 'Q', description: 'Back to main menu (quit if standalone)' },

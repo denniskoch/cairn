@@ -319,8 +319,10 @@ export class MainMenuScreen implements Screen {
       Enter: () => this.activateCurrent(),
       // Alpine convention: `>` activates whatever's under the cursor —
       // the keymenu advertises `> [<current label>]` to make it
-      // discoverable. Same effect as Enter.
+      // discoverable. `.` is the unshifted twin (same physical key on
+      // US layouts) and Alpine binds both so users don't need Shift.
       '>': () => this.activateCurrent(),
+      '.': () => this.activateCurrent(),
       // Direct-key shortcuts: pressing the letter activates that option.
       C: () => this.invokeKey('C'),
       I: () => this.invokeKey('I'),
@@ -343,7 +345,7 @@ export class MainMenuScreen implements Screen {
         { key: 'S', description: 'Setup (not yet implemented)' },
         { key: 'Q', description: 'Quit Cairn' },
         { key: '↑ ↓ / j k / N P', description: 'Move cursor between options' },
-        { key: 'Enter / >', description: 'Activate the highlighted option' },
+        { key: 'Enter / > / .', description: 'Activate the highlighted option' },
       ],
     }
   }
