@@ -56,11 +56,21 @@ export class ComposeScreen implements Screen {
 
   async enter(ctx: ScreenContext): Promise<void> {
     this.ctx = ctx
-    this.unsubscribeText = ctx.onTextInput((data) => this.handleTextInput(data))
     if (this.reply) {
       this.populateFromReply(this.reply)
     }
     await this.maybeAppendSignature()
+    // Subscribe to text input ONLY after all async setup completes.
+    // Subscribing earlier (the previous version did this on the first
+    // line of enter) introduces a race: while we're awaiting the
+    // signature pref lookup, any character the user types lands in
+    // handleTextInput and mutates `this.to` (the default active field).
+    // Worse, maybeAppendSignature then runs against the now-mutated
+    // bodyLines. The router doesn't push our keymap until enter()
+    // resolves, so the dispatcher doesn't claim keys for us during
+    // this window — text-input is the only path that can fire, and
+    // not subscribing closes it.
+    this.unsubscribeText = ctx.onTextInput((data) => this.handleTextInput(data))
   }
 
   /** Append the user's signature to the body when the corresponding

@@ -19,6 +19,12 @@ export class ViewScreen implements Screen {
   private ctx: ScreenContext | null = null
   private loading = true
   private error: string | null = null
+  /** Transient feedback line for one-shot actions (RSVP at the moment).
+   * Distinct from `error` — that one takes over the whole screen for a
+   * load failure with L-retry. This one is just a coloured line above
+   * the keymenu that auto-clears after a few seconds. */
+  private inviteStatus: { message: string; isError: boolean } | null = null
+  private inviteStatusTimer: ReturnType<typeof setTimeout> | null = null
   private scrollOffset = 0
   private fullHeaders = false
   /** Raw body, one entry per line, before any header content is prepended. */
@@ -75,6 +81,10 @@ export class ViewScreen implements Screen {
   }
 
   exit(): void {
+    if (this.inviteStatusTimer) {
+      clearTimeout(this.inviteStatusTimer)
+      this.inviteStatusTimer = null
+    }
     this.ctx = null
   }
 
@@ -171,6 +181,23 @@ export class ViewScreen implements Screen {
       const indicatorRow =
         scrollStartRow + Math.round(ratio * (visibleRows - 1))
       s.cell(indicatorRow, s.cols - 1, '│', { fg: 'brightBlack', inverse: true })
+    }
+
+    // Transient action feedback (RSVP success / failure) above the
+    // keymenu. Same row math as the breathing buffer between the
+    // scrollable region and the status bar: rows-3-CHROME is one row
+    // above what statusBar fills.
+    if (this.inviteStatus) {
+      const statusRow = s.rows - 3 - STATUS_BAR_CHROME
+      const attrs: Attrs = this.inviteStatus.isError
+        ? { fg: 'red', bold: true }
+        : { fg: 'green', bold: true }
+      s.text(
+        statusRow,
+        2,
+        this.inviteStatus.message.slice(0, s.cols - 4),
+        attrs,
+      )
     }
 
     this.renderStatusBar(s)
@@ -485,9 +512,30 @@ export class ViewScreen implements Screen {
       await window.cairn.mail.respondToInvite(this.message.id, kind)
       // Re-fetch so the banner's "your response" reflects the new state.
       await this.loadMessage()
+      const label =
+        kind === 'accept'
+          ? 'Accepted'
+          : kind === 'tentative'
+            ? 'Tentative'
+            : 'Declined'
+      this.setInviteStatus(`Response sent: ${label}`, false)
     } catch (err) {
-      console.warn('respondToInvite failed:', err)
+      const msg = err instanceof Error ? err.message : String(err)
+      this.setInviteStatus(`RSVP failed: ${msg}`, true)
     }
+  }
+
+  /** Show a short colored line above the keymenu (4s auto-clear).
+   * Replaces any pending status timer so the latest action wins. */
+  private setInviteStatus(message: string, isError: boolean): void {
+    this.inviteStatus = { message, isError }
+    if (this.inviteStatusTimer) clearTimeout(this.inviteStatusTimer)
+    this.inviteStatusTimer = setTimeout(() => {
+      this.inviteStatus = null
+      this.inviteStatusTimer = null
+      this.ctx?.invalidate()
+    }, 4000)
+    this.ctx?.invalidate()
   }
 
   private async openCompose(kind: ReplyKind): Promise<void> {
