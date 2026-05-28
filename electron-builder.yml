@@ -29,8 +29,22 @@ mac:
     - dmg
     - zip
   category: public.app-category.productivity
-  # No notarization / signing for v1. macOS Gatekeeper will warn on first
-  # launch; users right-click → Open.
+  # Signed + notarized when CI runs with MAC_CSC_LINK / APPLE_ID env vars
+  # present (tag-push builds in .github/workflows/build.yml). For unsigned
+  # local `make package` builds these vars are unset and electron-builder
+  # skips signing — Gatekeeper warns on first launch in that case.
+  #
+  # hardenedRuntime is required for notarization. electron-builder ships
+  # default entitlements with the V8 entries Electron needs
+  # (allow-jit, allow-unsigned-executable-memory,
+  # allow-dyld-environment-variables); we don't override them. Since
+  # we're distributing via Developer ID (not the Mac App Store) the app
+  # is not sandboxed, so no network/file-access entitlements are needed.
+  #
+  # gatekeeperAssess: false skips the slow local Gatekeeper sanity check
+  # during build — notarization is the authoritative validation anyway.
+  hardenedRuntime: true
+  gatekeeperAssess: false
 
 win:
   target:

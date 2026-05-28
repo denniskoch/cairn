@@ -91,7 +91,15 @@ jobs:
 
       # ----- Build + sign -----
       #
-      # mac / linux / non-tag win: single-pass `npm run package:<target>`.
+      # mac (no tag) / linux / non-tag win: single-pass `npm run
+      # package:<target>` with no signing identity discovery.
+      #
+      # mac (tag): import the Developer ID Application cert into a
+      # temporary keychain, then run the same package step with
+      # CSC_IDENTITY_AUTO_DISCOVERY left on so electron-builder finds the
+      # identity. APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+      # in env trigger notarization via notarytool; electron-builder
+      # staples the resulting ticket to the .dmg automatically.
       #
       # Windows tag builds: two-pass. electron-builder first emits the
       # unpacked app dir (`dist/win-unpacked/`), we sign Cairn.exe inside
@@ -101,15 +109,32 @@ jobs:
       # Cairn.exe extracted from it (the binary the user actually runs)
       # would not be, and SmartScreen would warn on every launch.
 
+      - name: Setup macOS signing identity
+        if: matrix.target == 'mac' && startsWith(github.ref, 'refs/tags/v')
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          # Base64-encoded .p12 export of the Developer ID Application
+          # cert (Keychain Access → My Certificates → right-click →
+          # Export → Personal Information Exchange .p12).
+          p12-file-base64: ${{ secrets.MAC_CSC_LINK }}
+          p12-password: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+
       - name: Package
         if: '!(matrix.target == ''win'' && startsWith(github.ref, ''refs/tags/v''))'
         env:
-          # Skip macOS code signing entirely. Without this, electron-builder
-          # tries to auto-discover a signing identity from the runner's
-          # keychain and emits noisy warnings when it doesn't find one.
-          # The same flag also stops Windows from invoking signtool.exe
-          # with no certificate configured.
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # On mac + tag we want auto-discovery ON so electron-builder
+          # finds the Developer ID identity in the keychain we just
+          # populated. Everywhere else (mac without tag, linux, win
+          # without tag) we suppress it to silence the no-cert-found
+          # warnings and stop signtool.exe being invoked with no cert.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ (matrix.target == 'mac' && startsWith(github.ref, 'refs/tags/v')) && 'true' || 'false' }}
+          # Notarization credentials. electron-builder auto-detects these
+          # on macOS builds and runs notarytool when all three are set;
+          # on non-mac builds the vars are inert. Setting them
+          # unconditionally avoids a second conditional env block.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         # `-- --publish never` forwards `--publish never` to electron-builder
         # so it doesn't try to publish to GitHub Releases on its own. Our
         # `release` job below is the single publisher; without this flag
