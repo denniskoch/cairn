@@ -46,6 +46,17 @@ mac:
   hardenedRuntime: true
   gatekeeperAssess: false
 
+# The .dmg wrapper has to be signed separately from the .app inside it.
+# electron-builder doesn't auto-enable this when signing identity comes
+# from CSC_IDENTITY_AUTO_DISCOVERY (only when mac.identity is set in
+# config). Without this flag the .app inside the .dmg is signed and
+# notarized correctly but the .dmg itself trips Gatekeeper at download
+# time, forcing a right-click → Open the first time. With sign: true,
+# electron-builder signs the .dmg and submits it to notarytool, then
+# staples the ticket to the .dmg so Gatekeeper accepts it offline.
+dmg:
+  sign: true
+
 win:
   target:
     - nsis
