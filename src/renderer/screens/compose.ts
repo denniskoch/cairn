@@ -1,8 +1,8 @@
-import type { ContactSuggestion } from '../../shared/contacts'
 import type { Address, Draft, Message } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
 import { STATUS_BAR_CHROME } from '../surface/types'
+import { AddressAutocompleteManager } from './compose-autocomplete'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
 type Field = 'to' | 'cc' | 'bcc' | 'subject' | 'body'
@@ -39,16 +39,15 @@ export class ComposeScreen implements Screen {
   private statusIsError = false
   private statusTimer: ReturnType<typeof setTimeout> | null = null
 
-  // Address autocomplete state. `suggestions` is the visible dropdown;
-  // `suggestionCursor` is the highlighted row (used by step-3 keymap
-  // navigation, harmless in step-2 visuals). The cache is keyed by
-  // lowercased prefix so backspacing back to a previously-seen prefix
-  // doesn't re-hit Graph.
-  private suggestions: ContactSuggestion[] = []
-  private suggestionCursor = 0
-  private suggestionPrefix = ''
-  private suggestionTimer: ReturnType<typeof setTimeout> | null = null
-  private suggestionCache = new Map<string, ContactSuggestion[]>()
+  /** Owns the dropdown subsystem: suggestion list, lookup debounce,
+   * cache, render. See compose-autocomplete.ts for the contract. We
+   * still own field text and the prefix-from-field math; the manager
+   * just consumes the prefix via the getCurrentPrefix callback. */
+  private autocomplete = new AddressAutocompleteManager(
+    (prefix, limit) => window.cairn.contacts.lookup(prefix, limit),
+    () => this.ctx?.invalidate(),
+    () => this.currentLookupPrefix(),
+  )
 
   private ctx: ScreenContext | null = null
   private unsubscribeText: (() => void) | null = null
@@ -145,14 +144,19 @@ export class ComposeScreen implements Screen {
       clearTimeout(this.statusTimer)
       this.statusTimer = null
     }
-    if (this.suggestionTimer) {
-      clearTimeout(this.suggestionTimer)
-      this.suggestionTimer = null
-    }
+    this.autocomplete.dispose()
     this.ctx = null
   }
 
   // ---- address autocomplete ----
+  //
+  // Compose owns: the active field, the field text values
+  // (to/cc/bcc/subject/body), cursor positions, and the prefix-from-text
+  // math (currentLookupPrefix). The dropdown subsystem
+  // (AddressAutocompleteManager) owns: suggestion list, debounce timer,
+  // cache, highlight cursor, and rendering. The two communicate via
+  // `this.autocomplete.schedule()` on keystrokes and
+  // `this.autocomplete.current()` on accept.
 
   /** True when the current field accepts addresses (To / Cc / Bcc).
    * Used to gate the autocomplete behaviors. */
@@ -166,7 +170,7 @@ export class ComposeScreen implements Screen {
    * everything after the last comma or semicolon in the active
    * address field. Strips surrounding whitespace so the user's
    * separator style ("a@x, b@x" or "a@x ;b@x") doesn't affect the
-   * lookup query. */
+   * lookup query. Empty string when not in an address field. */
   private currentLookupPrefix(): string {
     if (!this.isAddressField()) return ''
     const { value, col } = this.getActiveHeader()
@@ -178,68 +182,12 @@ export class ComposeScreen implements Screen {
     return upToCursor.slice(lastSep + 1).trim()
   }
 
-  /** Debounced lookup against the contacts IPC. ~250ms lets the user
-   * keep typing without firing a Graph request on every keystroke,
-   * which would both rate-limit the app and produce flicker. */
-  private scheduleLookup(): void {
-    if (this.suggestionTimer) clearTimeout(this.suggestionTimer)
-    const prefix = this.currentLookupPrefix()
-    if (prefix.length < 2) {
-      this.clearSuggestions()
-      return
-    }
-    this.suggestionTimer = setTimeout(() => {
-      void this.runLookup(prefix)
-    }, 250)
-  }
-
-  private async runLookup(prefix: string): Promise<void> {
-    const key = prefix.toLowerCase()
-    const cached = this.suggestionCache.get(key)
-    if (cached) {
-      this.applySuggestions(prefix, cached)
-      return
-    }
-    try {
-      const result = await window.cairn.contacts.lookup(prefix, 8)
-      this.suggestionCache.set(key, result)
-      this.applySuggestions(prefix, result)
-    } catch (err) {
-      // Silently swallow — autocomplete failing shouldn't block compose.
-      console.warn('contacts.lookup failed:', err)
-    }
-  }
-
-  private applySuggestions(prefix: string, list: ContactSuggestion[]): void {
-    // The user may have typed more since this lookup was fired; only
-    // apply when our prefix is still what they're looking at, otherwise
-    // we'd show stale results.
-    if (this.currentLookupPrefix() !== prefix) return
-    this.suggestions = list
-    this.suggestionPrefix = prefix
-    this.suggestionCursor = 0
-    this.ctx?.invalidate()
-  }
-
-  private clearSuggestions(): void {
-    if (this.suggestions.length === 0 && !this.suggestionPrefix) return
-    this.suggestions = []
-    this.suggestionPrefix = ''
-    this.suggestionCursor = 0
-    this.ctx?.invalidate()
-  }
-
   /** Is the dropdown currently the active UI element? Used to gate
    * Up/Down/Enter/Tab so they navigate suggestions instead of fields
-   * when the user is mid-completion. */
+   * when the user is mid-completion. Two conditions: cursor is in an
+   * address field, AND the manager has suggestions to show. */
   private dropdownActive(): boolean {
-    return this.isAddressField() && this.suggestions.length > 0
-  }
-
-  private moveSuggestionCursor(delta: 1 | -1): void {
-    if (!this.dropdownActive()) return
-    const len = this.suggestions.length
-    this.suggestionCursor = (this.suggestionCursor + delta + len) % len
+    return this.isAddressField() && this.autocomplete.hasSuggestions()
   }
 
   /** Replace the in-progress prefix (text from the last comma/semicolon
@@ -249,11 +197,11 @@ export class ComposeScreen implements Screen {
    * can keep typing the next recipient. */
   private acceptSuggestion(addSeparator: boolean): void {
     if (!this.dropdownActive()) return
-    const sug = this.suggestions[this.suggestionCursor]
+    const sug = this.autocomplete.current()
     if (!sug) return
     const formatted = sug.name ? `${sug.name} <${sug.email}>` : sug.email
     this.replaceCurrentPrefix(formatted, addSeparator)
-    this.clearSuggestions()
+    this.autocomplete.clear()
   }
 
   /** Comma/semicolon handler. If the dropdown has a highlighted
@@ -290,75 +238,6 @@ export class ComposeScreen implements Screen {
     const tail = addSeparator ? ', ' : ''
     const newValue = head + formatted + tail + after
     this.setActiveHeader(newValue, (head + formatted + tail).length)
-  }
-
-  /** Paint the dropdown as an overlay on top of the body region,
-   * starting at `topRow`. One row of inverse "title" with the count,
-   * then up to MAX_VISIBLE rows of name/email/context, then a thin
-   * footer rule. The highlighted row (suggestionCursor) is inverse.
-   * Source letter (C/P/U) sits in the right margin so the user can
-   * tell where each candidate came from. */
-  private renderSuggestions(s: Surface, topRow: number): void {
-    const MAX_VISIBLE = 6
-    const headerAttrs: Attrs = { fg: 'cyan', bold: true }
-    const cursorAttrs: Attrs = { inverse: true }
-    const muted: Attrs = { fg: 'brightBlack' }
-
-    const visible = this.suggestions.slice(0, MAX_VISIBLE)
-    const totalRows = 1 + visible.length + 1 // title + rows + footer
-    const maxRow = Math.min(topRow + totalRows, s.rows - 1 - STATUS_BAR_CHROME)
-    if (maxRow <= topRow + 2) return // not enough room
-
-    // Title row
-    s.fill(topRow, 0, s.cols, ' ', headerAttrs)
-    const title = ` ${visible.length} match${visible.length === 1 ? '' : 'es'} for "${this.suggestionPrefix}" `
-    s.text(topRow, 0, title.slice(0, s.cols), headerAttrs)
-
-    // Layout: name (24) | email (40) | source letter (1, right margin)
-    const NAME_COL = 2
-    const NAME_WIDTH = 24
-    const EMAIL_COL = NAME_COL + NAME_WIDTH + 1
-    const EMAIL_WIDTH = Math.max(20, s.cols - EMAIL_COL - 4)
-    const SOURCE_COL = s.cols - 2
-
-    for (let i = 0; i < visible.length; i++) {
-      const row = topRow + 1 + i
-      if (row >= maxRow) break
-      const sug = visible[i]
-      const isActive = i === this.suggestionCursor
-      const rowAttrs: Attrs = isActive ? cursorAttrs : {}
-
-      if (isActive) s.fill(row, 0, s.cols, ' ', cursorAttrs)
-
-      // Marker arrow in col 0 for the highlighted row only.
-      if (isActive) s.cell(row, 0, '▸', cursorAttrs)
-
-      s.text(
-        row,
-        NAME_COL,
-        sug.name.slice(0, NAME_WIDTH).padEnd(NAME_WIDTH),
-        rowAttrs,
-      )
-      s.text(
-        row,
-        EMAIL_COL,
-        sug.email.slice(0, EMAIL_WIDTH).padEnd(EMAIL_WIDTH),
-        isActive ? cursorAttrs : muted,
-      )
-      s.cell(
-        row,
-        SOURCE_COL,
-        sug.source === 'contact' ? 'C' : sug.source === 'person' ? 'P' : 'U',
-        rowAttrs,
-      )
-    }
-
-    // Footer rule closes the dropdown so it doesn't blur into the body
-    // underneath.
-    const footerRow = topRow + 1 + visible.length
-    if (footerRow < maxRow) {
-      s.fill(footerRow, 0, s.cols, '─', { fg: 'cyan' })
-    }
   }
 
   // ---- input handling ----
@@ -407,17 +286,17 @@ export class ComposeScreen implements Screen {
       case 'to':
         this.to = value
         this.toCol = col
-        this.scheduleLookup()
+        this.autocomplete.schedule()
         break
       case 'cc':
         this.cc = value
         this.ccCol = col
-        this.scheduleLookup()
+        this.autocomplete.schedule()
         break
       case 'bcc':
         this.bcc = value
         this.bccCol = col
-        this.scheduleLookup()
+        this.autocomplete.schedule()
         break
       case 'subject':
         this.subject = value
@@ -432,8 +311,8 @@ export class ComposeScreen implements Screen {
     this.active = FIELDS[next]
     // Leaving an address field drops the dropdown; entering one
     // re-queries for whatever prefix is sitting at the cursor.
-    if (this.isAddressField()) this.scheduleLookup()
-    else this.clearSuggestions()
+    if (this.isAddressField()) this.autocomplete.schedule()
+    else this.autocomplete.clear()
   }
 
   private backspace(): void {
@@ -667,8 +546,8 @@ export class ComposeScreen implements Screen {
     // Only painted when the user is in the To: field and has typed a
     // matchable prefix; clears as soon as the prefix changes back to
     // empty / under-2-chars.
-    if (this.isAddressField() && this.suggestions.length > 0) {
-      this.renderSuggestions(s, bodyStartRow)
+    if (this.isAddressField() && this.autocomplete.hasSuggestions()) {
+      this.autocomplete.render(s, bodyStartRow)
     }
 
     // Status message line (above status bar)
@@ -776,7 +655,7 @@ export class ComposeScreen implements Screen {
       // Movement
       Up: () => {
         if (this.dropdownActive()) {
-          this.moveSuggestionCursor(-1)
+          this.autocomplete.moveCursor(-1)
         } else {
           this.moveUp()
         }
@@ -784,7 +663,7 @@ export class ComposeScreen implements Screen {
       },
       Down: () => {
         if (this.dropdownActive()) {
-          this.moveSuggestionCursor(1)
+          this.autocomplete.moveCursor(1)
         } else {
           this.moveDown()
         }
@@ -820,7 +699,7 @@ export class ComposeScreen implements Screen {
         // Only used to dismiss the dropdown — otherwise leave Escape
         // alone so xterm / electron defaults still work.
         if (this.dropdownActive()) {
-          this.clearSuggestions()
+          this.autocomplete.clear()
         }
       },
       ',': () => {
