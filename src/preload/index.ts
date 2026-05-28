@@ -47,6 +47,7 @@ const api: CairnApi = {
         attachmentId,
         suggestedName,
       ),
+    resetCache: () => ipcRenderer.invoke('cairn:mail:resetCache'),
     onEvent: (cb) => {
       const handler = (_event: IpcRendererEvent, mailEvent: MailEvent) => cb(mailEvent)
       ipcRenderer.on('cairn:mail:event', handler)

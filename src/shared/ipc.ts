@@ -57,6 +57,10 @@ export interface CairnApi {
       attachmentId: string,
       suggestedName: string,
     ): Promise<{ saved: true; path: string } | { saved: false }>
+    /** Alpha-only: wipe the local cache (messages + folders + delta
+     * cursors) and refetch the folder tree. Useful for clearing stale
+     * rows when sync logic changes. */
+    resetCache(): Promise<void>
     onEvent(cb: (event: MailEvent) => void): () => void
   }
   sync: {

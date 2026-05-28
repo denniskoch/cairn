@@ -35,6 +35,7 @@ let mainWindow: BrowserWindow | null = null
 let db: Database.Database | null = null
 let graphProvider: GraphProvider | null = null
 let sync: SyncScheduler | null = null
+let cache: MailCache | null = null
 
 /** Load build/icon.png for use as the dev-mode window/dock icon. In
  * packaged builds, electron-builder bakes the icon into the bundle
@@ -80,7 +81,7 @@ function createWindow(): void {
 function initMailLayer(accountId: string): void {
   if (!db) throw new Error('mail: db not initialized')
   if (graphProvider) return // already up; ignore re-auth of same account
-  const cache = new MailCache(db, accountId)
+  cache = new MailCache(db, accountId)
   sync = new SyncScheduler(cache, getAccessToken)
   graphProvider = new GraphProvider(getAccessToken, cache, sync)
 
@@ -139,6 +140,19 @@ function registerIpcHandlers(): void {
   ipcMain.handle('cairn:mail:listFolders', () => {
     if (!graphProvider) throw new Error('mail: provider not initialized')
     return graphProvider.listFolders()
+  })
+
+  // Alpha-only escape hatch: wipe the local cache and refetch the folder
+  // tree. Useful when stale rows accumulate from a previous build's sync
+  // logic. The renderer surfaces this on the Setup screen.
+  ipcMain.handle('cairn:mail:resetCache', async () => {
+    if (!cache) throw new Error('mail: cache not initialized')
+    cache.resetMessageCache()
+    // Repopulate folders immediately so the next folder-list visit
+    // doesn't show an empty tree. Message rows refill lazily as the
+    // user opens each folder (listMessages on an empty cache triggers
+    // firstPage + initialSync via the GraphProvider).
+    await sync?.refreshFolderTree()
   })
 
   ipcMain.handle('cairn:mail:setCurrentFolder', (_, folderId: unknown) => {

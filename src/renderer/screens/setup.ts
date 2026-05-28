@@ -39,12 +39,33 @@ const SETTINGS: SettingRow[] = [
     },
     open: (self) => self.openVisualFilterPicker(),
   },
+  {
+    id: 'resetCache',
+    label: 'Reset cache',
+    description:
+      'Wipe all cached folders and messages. Folders refetch immediately.',
+    // No persistent "value" — this is an action row. We show transient
+    // status text (confirmation prompt, then success/error) by reading
+    // it from the SetupScreen instance during render rather than
+    // through this getter.
+    value: () => '(action)',
+    open: (self) => self.requestCacheReset(),
+  },
 ]
 
 export class SetupScreen implements Screen {
   private cursor = 0
   private ctx: ScreenContext | null = null
   private values: Record<string, string> = {}
+  /** Two-press confirmation state for the cache-reset row. True after
+   * the user presses Enter on Reset cache the first time; a second
+   * Enter actually performs the reset. Any navigation key clears it. */
+  private confirmingReset = false
+  /** Transient feedback line shown above the keymenu. Used by cache
+   * reset to surface the confirmation prompt and the post-action
+   * result. Cleared on navigation. */
+  private statusMessage: string | null = null
+  private statusIsError = false
 
   async enter(ctx: ScreenContext): Promise<void> {
     this.ctx = ctx
@@ -80,6 +101,51 @@ export class SetupScreen implements Screen {
       await this.ctx?.router.push(new VisualFilterPickerScreen(current))
       await this.loadValues()
     })()
+  }
+
+  /** Cache-reset is a two-press confirmation. First Enter arms it
+   * (status line shows the prompt); second Enter performs the wipe
+   * via IPC and refetches the folder tree. Any other key cancels —
+   * see clearConfirmation() calls in the keymap. */
+  requestCacheReset(): void {
+    if (this.confirmingReset) {
+      void this.performCacheReset()
+      return
+    }
+    this.confirmingReset = true
+    this.statusIsError = false
+    this.statusMessage =
+      'Press Enter again to confirm cache reset (any other key cancels).'
+    this.ctx?.invalidate()
+  }
+
+  private async performCacheReset(): Promise<void> {
+    this.confirmingReset = false
+    this.statusMessage = 'Clearing cache…'
+    this.statusIsError = false
+    this.ctx?.invalidate()
+    try {
+      await window.cairn.mail.resetCache()
+      this.statusMessage =
+        'Cache cleared. Folders reloaded; messages will refetch on demand.'
+      this.statusIsError = false
+    } catch (err) {
+      this.statusMessage = `Reset failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+      this.statusIsError = true
+    }
+    this.ctx?.invalidate()
+  }
+
+  /** Called by any non-Enter handler to drop a pending confirmation
+   * and clear any stale status message. */
+  private clearConfirmation(): void {
+    if (this.confirmingReset || this.statusMessage) {
+      this.confirmingReset = false
+      this.statusMessage = null
+      this.ctx?.invalidate()
+    }
   }
 
   render(): void {
@@ -123,6 +189,20 @@ export class SetupScreen implements Screen {
       s.text(row + 1, indentCol + 2, setting.description, { fg: 'brightBlack' })
     }
 
+    // Transient status line above the keymenu — confirmation prompts
+    // and reset feedback land here. Yellow for prompts/success, red
+    // for errors. The row math has to land ABOVE the keymenu's top
+    // breathing row (s.rows - 1 - keymenuLines - 1, which statusBar()
+    // fills with blanks) — so `rows - 3 - STATUS_BAR_CHROME` for a
+    // 2-line keymenu, matching what MainMenuScreen does.
+    if (this.statusMessage) {
+      const statusRow = s.rows - 3 - STATUS_BAR_CHROME
+      const attrs: Attrs = this.statusIsError
+        ? { fg: 'red', bold: true }
+        : { fg: 'yellow', bold: true }
+      s.text(statusRow, indentCol, this.statusMessage.slice(0, s.cols - indentCol - 2), attrs)
+    }
+
     s.statusBar([
       [
         { key: '?', label: 'Help' },
@@ -147,12 +227,14 @@ export class SetupScreen implements Screen {
 
   keymap(): KeyMap {
     const up = (): void => {
+      this.clearConfirmation()
       if (this.cursor > 0) {
         this.cursor--
         this.ctx?.invalidate()
       }
     }
     const down = (): void => {
+      this.clearConfirmation()
       if (this.cursor < SETTINGS.length - 1) {
         this.cursor++
         this.ctx?.invalidate()
@@ -164,10 +246,22 @@ export class SetupScreen implements Screen {
       Down: down,
       J: down,
       Enter: () => {
+        // Don't clearConfirmation here — Enter is the only key that
+        // either arms the confirmation or, on second press, executes
+        // it. SETTINGS[i].open() decides what to do.
         const setting = SETTINGS[this.cursor]
         if (setting) setting.open(this)
       },
-      Q: () => void this.ctx?.router.pop(),
+      Q: () => {
+        // Q while a reset is armed cancels confirmation without
+        // popping; second Q (or any non-Enter) does the pop. This
+        // matches the "any other key cancels" wording in the prompt.
+        if (this.confirmingReset) {
+          this.clearConfirmation()
+          return
+        }
+        void this.ctx?.router.pop()
+      },
     }
   }
 
@@ -177,6 +271,11 @@ export class SetupScreen implements Screen {
       entries: [
         { key: '↑ ↓ / j k', description: 'Move cursor between settings' },
         { key: 'Enter', description: 'Open a picker for the highlighted setting' },
+        {
+          key: 'Enter (on Reset cache)',
+          description:
+            'Press twice to wipe local folders + messages and refetch. Any other key cancels.',
+        },
         { key: 'Q', description: 'Back to main menu' },
       ],
     }

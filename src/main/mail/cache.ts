@@ -50,6 +50,31 @@ export class MailCache {
 
   // ----- folders -----
 
+  /**
+   * Wipe all cached mail data for this account: messages and folders.
+   * Per-folder delta cursors / high-water marks live on the folder row
+   * itself, so deleting folders implicitly clears them — the next sync
+   * starts fresh.
+   *
+   * Auth (the MSAL token cache) and prefs (theme, visual filter, etc.)
+   * are untouched. Useful during alpha when stale rows accumulate from
+   * a previous build's sync logic (e.g. partial folder trees from
+   * before recursive collectFolders, or duplicate message rows from a
+   * bug). After this call, the next listFolders / listMessages trigger
+   * a full re-fetch.
+   */
+  resetMessageCache(): void {
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(`DELETE FROM messages WHERE account_id = ?`)
+        .run(this.accountId)
+      this.db
+        .prepare(`DELETE FROM folders WHERE account_id = ?`)
+        .run(this.accountId)
+    })
+    tx()
+  }
+
   upsertFolder(folder: {
     id: string
     name: string
