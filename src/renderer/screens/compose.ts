@@ -5,7 +5,7 @@ import type { Attrs, Surface } from '../surface'
 import { STATUS_BAR_CHROME } from '../surface/types'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
-type Field = 'to' | 'cc' | 'subject' | 'body'
+type Field = 'to' | 'cc' | 'bcc' | 'subject' | 'body'
 
 export type ReplyKind = 'reply' | 'replyAll' | 'forward'
 
@@ -16,7 +16,7 @@ export interface ReplyContext {
 }
 
 const HEADER_LABEL_WIDTH = 9 // "Subject: ".length
-const FIELDS: Field[] = ['to', 'cc', 'subject', 'body']
+const FIELDS: Field[] = ['to', 'cc', 'bcc', 'subject', 'body']
 const LABEL_ATTRS: Attrs = { fg: 'cyan', bold: true }
 const STATUS_FG_OK: Attrs = { fg: 'yellow' }
 const STATUS_FG_ERR: Attrs = { fg: 'red' }
@@ -24,11 +24,13 @@ const STATUS_FG_ERR: Attrs = { fg: 'red' }
 export class ComposeScreen implements Screen {
   private to = ''
   private cc = ''
+  private bcc = ''
   private subject = ''
   private bodyLines: string[] = ['']
   private active: Field = 'to'
   private toCol = 0
   private ccCol = 0
+  private bccCol = 0
   private subjectCol = 0
   private bodyRow = 0
   private bodyCol = 0
@@ -152,13 +154,23 @@ export class ComposeScreen implements Screen {
 
   // ---- address autocomplete ----
 
+  /** True when the current field accepts addresses (To / Cc / Bcc).
+   * Used to gate the autocomplete behaviors. */
+  private isAddressField(): boolean {
+    return (
+      this.active === 'to' || this.active === 'cc' || this.active === 'bcc'
+    )
+  }
+
   /** The text the user is currently typing as the *next* address —
-   * everything after the last comma or semicolon in the To: field.
-   * Strips surrounding whitespace so the user's separator style
-   * ("a@x, b@x" or "a@x ;b@x") doesn't affect the lookup query. */
+   * everything after the last comma or semicolon in the active
+   * address field. Strips surrounding whitespace so the user's
+   * separator style ("a@x, b@x" or "a@x ;b@x") doesn't affect the
+   * lookup query. */
   private currentLookupPrefix(): string {
-    if (this.active !== 'to') return ''
-    const upToCursor = this.to.slice(0, this.toCol)
+    if (!this.isAddressField()) return ''
+    const { value, col } = this.getActiveHeader()
+    const upToCursor = value.slice(0, col)
     const lastSep = Math.max(
       upToCursor.lastIndexOf(','),
       upToCursor.lastIndexOf(';'),
@@ -221,7 +233,7 @@ export class ComposeScreen implements Screen {
    * Up/Down/Enter/Tab so they navigate suggestions instead of fields
    * when the user is mid-completion. */
   private dropdownActive(): boolean {
-    return this.active === 'to' && this.suggestions.length > 0
+    return this.isAddressField() && this.suggestions.length > 0
   }
 
   private moveSuggestionCursor(delta: 1 | -1): void {
@@ -258,14 +270,15 @@ export class ComposeScreen implements Screen {
     this.replaceCurrentPrefix(this.currentLookupPrefix(), true)
   }
 
-  /** Splice into this.to: replace [lastSep+1, cursor) with the formatted
-   * address plus optional ', '. Leaves anything to the RIGHT of the
-   * cursor untouched (rare — the user usually completes at end-of-line
-   * — but supported for completeness). */
+  /** Splice into the active address field: replace [lastSep+1, cursor)
+   * with the formatted address plus optional ', '. Leaves anything
+   * to the RIGHT of the cursor untouched (rare — the user usually
+   * completes at end-of-line — but supported for completeness). */
   private replaceCurrentPrefix(formatted: string, addSeparator: boolean): void {
-    if (this.active !== 'to') return
-    const upToCursor = this.to.slice(0, this.toCol)
-    const after = this.to.slice(this.toCol)
+    if (!this.isAddressField()) return
+    const { value, col } = this.getActiveHeader()
+    const upToCursor = value.slice(0, col)
+    const after = value.slice(col)
     const lastSep = Math.max(
       upToCursor.lastIndexOf(','),
       upToCursor.lastIndexOf(';'),
@@ -276,8 +289,7 @@ export class ComposeScreen implements Screen {
     const head = lastSep >= 0 && !before.endsWith(' ') ? before + ' ' : before
     const tail = addSeparator ? ', ' : ''
     const newValue = head + formatted + tail + after
-    this.to = newValue
-    this.toCol = (head + formatted + tail).length
+    this.setActiveHeader(newValue, (head + formatted + tail).length)
   }
 
   /** Paint the dropdown as an overlay on top of the body region,
@@ -381,6 +393,8 @@ export class ComposeScreen implements Screen {
         return { value: this.to, col: this.toCol }
       case 'cc':
         return { value: this.cc, col: this.ccCol }
+      case 'bcc':
+        return { value: this.bcc, col: this.bccCol }
       case 'subject':
         return { value: this.subject, col: this.subjectCol }
       default:
@@ -398,6 +412,12 @@ export class ComposeScreen implements Screen {
       case 'cc':
         this.cc = value
         this.ccCol = col
+        this.scheduleLookup()
+        break
+      case 'bcc':
+        this.bcc = value
+        this.bccCol = col
+        this.scheduleLookup()
         break
       case 'subject':
         this.subject = value
@@ -410,9 +430,9 @@ export class ComposeScreen implements Screen {
     const idx = FIELDS.indexOf(this.active)
     const next = (idx + direction + FIELDS.length) % FIELDS.length
     this.active = FIELDS[next]
-    // Leaving To: should drop the dropdown; entering To: should re-query
-    // for whatever prefix is sitting at the cursor.
-    if (this.active === 'to') this.scheduleLookup()
+    // Leaving an address field drops the dropdown; entering one
+    // re-queries for whatever prefix is sitting at the cursor.
+    if (this.isAddressField()) this.scheduleLookup()
     else this.clearSuggestions()
   }
 
@@ -541,14 +561,31 @@ export class ComposeScreen implements Screen {
   }
 
   private buildDraft(): Draft | null {
-    const to = parseAddrs(this.to)
-    if (to.length === 0) {
+    const to = parseAddrField(this.to)
+    const cc = parseAddrField(this.cc)
+    const bcc = parseAddrField(this.bcc)
+
+    if (to.emails.length === 0) {
       this.setStatus('At least one recipient required.', true)
       return null
     }
+
+    // Bail before Graph does — bare names like 'Cramer' would otherwise
+    // come back as ErrorInvalidRecipients. Surface them so the user
+    // can autocomplete or replace them in place.
+    const unresolved = [...to.unresolved, ...cc.unresolved, ...bcc.unresolved]
+    if (unresolved.length > 0) {
+      this.setStatus(
+        `Unresolved recipient${unresolved.length === 1 ? '' : 's'}: ${unresolved.join(', ')}`,
+        true,
+      )
+      return null
+    }
+
     return {
-      to,
-      cc: parseAddrs(this.cc),
+      to: to.emails,
+      cc: cc.emails,
+      bcc: bcc.emails,
       subject: this.subject,
       bodyText: this.bodyLines.join('\n').replace(/\r/g, ''),
     }
@@ -591,17 +628,18 @@ export class ComposeScreen implements Screen {
     const s = this.ctx.surface
     s.clear()
 
-    // Headers (rows 0..3)
+    // Headers (rows 0..4)
     this.drawHeaderRow(s, 0, 'From', readOnlyFrom())
     this.drawHeaderRow(s, 1, 'To', this.to)
     this.drawHeaderRow(s, 2, 'Cc', this.cc)
-    this.drawHeaderRow(s, 3, 'Subject', this.subject)
+    this.drawHeaderRow(s, 3, 'Bcc', this.bcc)
+    this.drawHeaderRow(s, 4, 'Subject', this.subject)
 
     // Separator
-    s.fill(4, 0, s.cols, '─', { fg: 'brightBlack' })
+    s.fill(5, 0, s.cols, '─', { fg: 'brightBlack' })
 
     // Body
-    const bodyStartRow = 5
+    const bodyStartRow = 6
     const statusBarRows = 2
     const statusMsgRows = this.statusMessage ? 1 : 0
     const bodyVisibleRows = Math.max(
@@ -629,7 +667,7 @@ export class ComposeScreen implements Screen {
     // Only painted when the user is in the To: field and has typed a
     // matchable prefix; clears as soon as the prefix changes back to
     // empty / under-2-chars.
-    if (this.active === 'to' && this.suggestions.length > 0) {
+    if (this.isAddressField() && this.suggestions.length > 0) {
       this.renderSuggestions(s, bodyStartRow)
     }
 
@@ -680,10 +718,11 @@ export class ComposeScreen implements Screen {
       : LABEL_ATTRS
     s.text(row, 0, (label + ':').padEnd(HEADER_LABEL_WIDTH), labelAttrs)
 
-    // To/Cc rows: split on commas/semicolons so already-committed
-    // addresses render bold (chip-like) and the actively-typed
-    // segment renders plain. Other rows draw straight text.
-    if (label === 'To' || label === 'Cc') {
+    // Address rows (To / Cc / Bcc): split on commas/semicolons so
+    // already-committed addresses render bold (chip-like) and the
+    // actively-typed segment renders plain. Other rows draw straight
+    // text.
+    if (label === 'To' || label === 'Cc' || label === 'Bcc') {
       this.drawAddressLine(s, row, HEADER_LABEL_WIDTH, value)
     } else {
       s.text(row, HEADER_LABEL_WIDTH, value.slice(0, s.cols - HEADER_LABEL_WIDTH))
@@ -719,7 +758,7 @@ export class ComposeScreen implements Screen {
 
   private placeCursor(s: Surface): void {
     if (this.active === 'body') {
-      const visibleRow = 5 + (this.bodyRow - this.scrollOffset)
+      const visibleRow = 6 + (this.bodyRow - this.scrollOffset)
       const visibleCol = Math.min(this.bodyCol, s.cols - 1)
       s.setCursor(visibleRow, visibleCol)
       return
@@ -785,12 +824,12 @@ export class ComposeScreen implements Screen {
         }
       },
       ',': () => {
-        if (this.active === 'to') this.commitAddressSeparator()
+        if (this.isAddressField()) this.commitAddressSeparator()
         else this.handleTextInput(',')
         this.ctx?.invalidate()
       },
       ';': () => {
-        if (this.active === 'to') this.commitAddressSeparator()
+        if (this.isAddressField()) this.commitAddressSeparator()
         else this.handleTextInput(';')
         this.ctx?.invalidate()
       },
@@ -821,12 +860,12 @@ export class ComposeScreen implements Screen {
     return {
       title: 'Compose',
       entries: [
-        { key: 'Tab', description: 'Cycle to next field (To → Cc → Subject → Body)' },
+        { key: 'Tab', description: 'Cycle to next field (To → Cc → Bcc → Subject → Body)' },
         { key: 'Enter', description: 'New line in body, or next field in header' },
         { key: '↑ ↓ ← →', description: 'Move cursor in body' },
         { key: 'Backspace / Delete', description: 'Edit text' },
         {
-          key: 'To: autocomplete',
+          key: 'To/Cc/Bcc autocomplete',
           description:
             'Type 2+ chars → dropdown. ↑↓ to highlight, Enter/Tab to accept, , or ; to accept + continue, Esc to dismiss.',
         },
@@ -850,6 +889,8 @@ function fieldForRow(row: number): Field | null {
     case 2:
       return 'cc'
     case 3:
+      return 'bcc'
+    case 4:
       return 'subject'
     default:
       return null
@@ -862,18 +903,74 @@ function rowForField(field: Field): number | null {
       return 1
     case 'cc':
       return 2
-    case 'subject':
+    case 'bcc':
       return 3
+    case 'subject':
+      return 4
     default:
       return null
   }
 }
 
-function parseAddrs(s: string): string[] {
-  return s
-    .split(',')
-    .map((a) => a.trim())
-    .filter((a) => a.length > 0)
+/** Pull just the email out of one address-field segment. Accepts both
+ * 'foo@bar' and 'Name <foo@bar>' forms; returns '' if no @ is found
+ * so the caller can flag the entry as unresolved. */
+function extractEmail(segment: string): string {
+  const trimmed = segment.trim()
+  const angle = trimmed.match(/<([^>]+)>/)
+  const candidate = (angle ? angle[1] : trimmed).trim()
+  return candidate.includes('@') ? candidate : ''
+}
+
+/** True when a segment looks like 'Name <email@host>' — used to decide
+ * whether a preceding bare-name segment should be re-glued onto it.
+ * Conservative: requires the angle brackets to contain something with
+ * an @ inside so we don't accidentally merge across unrelated text. */
+const ANGLE_EMAIL = /<[^@>]+@[^>]+>/
+
+/** Split an address-field value into segments, then re-glue adjacent
+ * pairs where the left side is a bare name (no @) and the right side
+ * has '<email>' — that recovers 'Last, First <email>' (the corporate
+ * directory format Outlook outputs by default) after a naive split on
+ * comma chopped it in half. NOT a full RFC 5322 parser; doesn't try
+ * to handle quoted display names like '"Doe, John" <j@x>' because
+ * almost no one actually writes those. */
+function splitAddrField(s: string): string[] {
+  const raw = s
+    .split(/[,;]/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0)
+  const out: string[] = []
+  let i = 0
+  while (i < raw.length) {
+    let segment = raw[i]
+    while (
+      !segment.includes('@') &&
+      i + 1 < raw.length &&
+      ANGLE_EMAIL.test(raw[i + 1])
+    ) {
+      segment = `${segment}, ${raw[i + 1]}`
+      i++
+    }
+    out.push(segment)
+    i++
+  }
+  return out
+}
+
+/** Resolve a typed address-field value into emails + leftover bare
+ * names the user couldn't or didn't expand. Unresolved entries let
+ * buildDraft refuse to send instead of having Graph 400 on
+ * ErrorInvalidRecipients. */
+function parseAddrField(s: string): { emails: string[]; unresolved: string[] } {
+  const emails: string[] = []
+  const unresolved: string[] = []
+  for (const segment of splitAddrField(s)) {
+    const email = extractEmail(segment)
+    if (email) emails.push(email)
+    else unresolved.push(segment)
+  }
+  return { emails, unresolved }
 }
 
 function readOnlyFrom(): string {
