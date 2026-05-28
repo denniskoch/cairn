@@ -4,6 +4,7 @@ import type { Attrs, Surface } from '../surface'
 import { STATUS_BAR_CHROME } from '../surface/types'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { ComposeScreen } from './compose'
+import { ConfirmScreen } from './confirm'
 import { FolderlistScreen } from './folderlist'
 import { HelpScreen } from './help'
 import { IndexScreen } from './index-screen'
@@ -60,9 +61,7 @@ const OPTIONS: MenuOption[] = [
     key: 'Q',
     label: 'QUIT',
     desc: 'Leave the Cairn program',
-    action: () => {
-      void window.cairn.app.quit()
-    },
+    action: (self) => self.confirmQuit(),
   },
 ]
 
@@ -133,6 +132,15 @@ export class MainMenuScreen implements Screen {
   openSetup(): void {
     if (!this.ctx) return
     void this.ctx.router.push(new SetupScreen())
+  }
+
+  confirmQuit(): void {
+    if (!this.ctx) return
+    void this.ctx.router.push(
+      new ConfirmScreen('Really quit Cairn?', () => {
+        void window.cairn.app.quit()
+      }),
+    )
   }
 
   notImplemented(name: string): void {

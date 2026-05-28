@@ -46,4 +46,10 @@ export interface Screen {
   /** Optional help content shown when the user presses ?. Screens that
    * don't define this just get a generic "no help available" screen. */
   helpInfo?(): HelpInfo
+  /** Optional. When true, the router renders the screen beneath this one
+   * first (without clear), and then this screen draws on top of it
+   * without calling s.clear(). Used for confirmation prompts that
+   * should overlay the keymenu area, leaving the screen contents
+   * visible behind. Defaults to false (full-screen replacement). */
+  overlay?: boolean
 }

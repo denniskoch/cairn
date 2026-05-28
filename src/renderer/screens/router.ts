@@ -57,7 +57,16 @@ export class Router {
   }
 
   private render(): void {
-    const top = this.stack[this.stack.length - 1]
-    if (top) top.render()
+    if (this.stack.length === 0) return
+    // Walk down to find the deepest non-overlay screen, then render that
+    // screen and every overlay sitting on top of it in order. Overlay
+    // screens don't call s.clear() in their render, so the layers below
+    // remain visible underneath the overlay's UI (e.g., the quit prompt
+    // sits over the keymenu while the main menu stays painted above it).
+    let baseIdx = this.stack.length - 1
+    while (baseIdx > 0 && this.stack[baseIdx].overlay) baseIdx--
+    for (let i = baseIdx; i < this.stack.length; i++) {
+      this.stack[i].render()
+    }
   }
 }

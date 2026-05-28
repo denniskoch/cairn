@@ -4,6 +4,7 @@ import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import type { StatusRow } from '../surface/types'
 import { STATUS_BAR_CHROME } from '../surface/types'
 import { ComposeScreen } from './compose'
+import { ConfirmScreen } from './confirm'
 import { IndexScreen } from './index-screen'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
@@ -270,8 +271,12 @@ export class FolderlistScreen implements Screen {
         // behaves on every other screen.
         if (this.ctx?.router.canPop()) {
           void this.ctx.router.pop()
-        } else {
-          void window.cairn.app.quit()
+        } else if (this.ctx) {
+          void this.ctx.router.push(
+            new ConfirmScreen('Really quit Cairn?', () => {
+              void window.cairn.app.quit()
+            }),
+          )
         }
       },
     }

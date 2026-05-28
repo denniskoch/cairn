@@ -1,6 +1,7 @@
 import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
 import { STATUS_BAR_CHROME } from '../surface/types'
+import { ConfirmScreen } from './confirm'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
 const STATUS_FG_OK: Attrs = { fg: 'yellow' }
@@ -103,7 +104,12 @@ export class ReAuthScreen implements Screen {
         }
       },
       Q: () => {
-        void window.cairn.app.quit()
+        if (!this.ctx) return
+        void this.ctx.router.push(
+          new ConfirmScreen('Really quit Cairn?', () => {
+            void window.cairn.app.quit()
+          }),
+        )
       },
     }
   }
