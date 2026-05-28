@@ -4,6 +4,7 @@ import { STATUS_BAR_CHROME } from '../surface/types'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { DEFAULT_THEME_NAME } from '../themes'
 import { DEFAULT_VISUAL_FILTER } from '../visual-filter'
+import { SignatureEditorScreen } from './signature-editor'
 import { ThemePickerScreen } from './theme-picker'
 import { VisualFilterPickerScreen } from './visual-filter-picker'
 import type { HelpInfo, Screen, ScreenContext } from './types'
@@ -16,6 +17,32 @@ interface SettingRow {
   value: () => string | Promise<string>
   /** Action when Enter is pressed on this row. */
   open: (self: SetupScreen) => void
+}
+
+/** Helper: read a pref that holds a boolean-ish string ('on' | 'off')
+ * and coerce to a labeled value for display. */
+async function readToggle(key: string, defaultOn: boolean): Promise<string> {
+  const v = await window.cairn.prefs.get(key)
+  if (v === 'on') return 'on'
+  if (v === 'off') return 'off'
+  return defaultOn ? 'on' : 'off'
+}
+
+async function flipToggle(key: string, defaultOn: boolean): Promise<void> {
+  const current = await readToggle(key, defaultOn)
+  await window.cairn.prefs.set(key, current === 'on' ? 'off' : 'on')
+}
+
+/** Single-line preview of the signature: shows the first non-blank
+ * line truncated, plus '(N lines)' when there are more lines. Empty
+ * sig reads as '(not set)' so the user can tell it's unconfigured. */
+async function signaturePreview(): Promise<string> {
+  const text = await window.cairn.prefs.get('signature.text')
+  if (!text) return '(not set)'
+  const lines = text.split('\n')
+  const first = lines.find((l) => l.trim().length > 0) ?? ''
+  const truncated = first.length > 40 ? `${first.slice(0, 39)}…` : first
+  return lines.length > 1 ? `${truncated}  (${lines.length} lines)` : truncated
 }
 
 const SETTINGS: SettingRow[] = [
@@ -38,6 +65,34 @@ const SETTINGS: SettingRow[] = [
       return v ?? DEFAULT_VISUAL_FILTER
     },
     open: (self) => self.openVisualFilterPicker(),
+  },
+  {
+    id: 'signature',
+    label: 'Signature',
+    description: 'Text appended to outgoing messages.',
+    value: signaturePreview,
+    open: (self) => self.openSignatureEditor(),
+  },
+  {
+    id: 'signatureOnNew',
+    label: 'Sign new messages',
+    description: 'Append signature when composing from scratch.',
+    value: () => readToggle('signature.onNew', true),
+    open: (self) => self.toggleSignaturePref('signature.onNew', true),
+  },
+  {
+    id: 'signatureOnReply',
+    label: 'Sign replies',
+    description: 'Append signature when replying.',
+    value: () => readToggle('signature.onReply', true),
+    open: (self) => self.toggleSignaturePref('signature.onReply', true),
+  },
+  {
+    id: 'signatureOnForward',
+    label: 'Sign forwards',
+    description: 'Append signature when forwarding.',
+    value: () => readToggle('signature.onForward', false),
+    open: (self) => self.toggleSignaturePref('signature.onForward', false),
   },
   {
     id: 'resetCache',
@@ -99,6 +154,23 @@ export class SetupScreen implements Screen {
     const current = this.values['visualFilter'] ?? DEFAULT_VISUAL_FILTER
     void (async () => {
       await this.ctx?.router.push(new VisualFilterPickerScreen(current))
+      await this.loadValues()
+    })()
+  }
+
+  openSignatureEditor(): void {
+    if (!this.ctx) return
+    void (async () => {
+      await this.ctx?.router.push(new SignatureEditorScreen())
+      await this.loadValues()
+    })()
+  }
+
+  /** Flip a 'on'/'off' pref in place. No sub-screen — just toggles and
+   * refreshes the row's displayed value. */
+  toggleSignaturePref(key: string, defaultOn: boolean): void {
+    void (async () => {
+      await flipToggle(key, defaultOn)
       await this.loadValues()
     })()
   }

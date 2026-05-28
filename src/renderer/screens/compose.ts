@@ -41,12 +41,54 @@ export class ComposeScreen implements Screen {
 
   constructor(private readonly reply?: ReplyContext) {}
 
-  enter(ctx: ScreenContext): void {
+  async enter(ctx: ScreenContext): Promise<void> {
     this.ctx = ctx
     this.unsubscribeText = ctx.onTextInput((data) => this.handleTextInput(data))
     if (this.reply) {
       this.populateFromReply(this.reply)
     }
+    await this.maybeAppendSignature()
+  }
+
+  /** Append the user's signature to the body when the corresponding
+   * Setup toggle is on. Layout: existing body (which already has the
+   * quoted reply / forwarded text if any), one blank, '-- ' (RFC 3676
+   * sig delimiter — trailing space required), then the signature
+   * lines. Defaults: on for new/reply, off for forward — matching what
+   * most modern clients ship with. */
+  private async maybeAppendSignature(): Promise<void> {
+    const kind = this.reply?.kind ?? 'new'
+    const enabledKey =
+      kind === 'reply' || kind === 'replyAll'
+        ? 'signature.onReply'
+        : kind === 'forward'
+          ? 'signature.onForward'
+          : 'signature.onNew'
+    const defaultOn = kind !== 'forward'
+
+    const enabledPref = await window.cairn.prefs.get(enabledKey)
+    const enabled = enabledPref === null ? defaultOn : enabledPref === 'on'
+    if (!enabled) return
+
+    const sig = await window.cairn.prefs.get('signature.text')
+    if (!sig) return
+
+    // RFC 3676 sig delimiter is '-- ' (trailing space required) on its
+    // own line. Block: blank, '-- ', the signature lines themselves.
+    const sigBlock = ['', '-- ', ...sig.split('\n')]
+
+    if (this.reply) {
+      // populateFromReply built bodyLines as [blank, ...attribution + quote].
+      // Modern convention puts the signature between the user's typing
+      // area and the quoted content (not under it Pine-style), so splice
+      // the sig block in after the leading blank, with a trailing blank
+      // separating it from the quote.
+      this.bodyLines.splice(1, 0, ...sigBlock, '')
+    } else {
+      // New message: nothing below to push around.
+      this.bodyLines.push(...sigBlock)
+    }
+    this.ctx?.invalidate()
   }
 
   private populateFromReply(reply: ReplyContext): void {
