@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import type {
   Address,
+  AttachmentMeta,
   Folder,
   Message,
   MessageHeader,
@@ -37,6 +38,7 @@ type MessageRow = {
   body_text: string | null
   body_html: string | null
   raw_headers: string | null
+  attachments: string | null
   fetched_at: number | null
 }
 
@@ -197,13 +199,14 @@ export class MailCache {
     this.upsertMessageHeader(folderId, m)
     this.db
       .prepare(
-        `UPDATE messages SET body_text = ?, body_html = ?, raw_headers = ?
+        `UPDATE messages SET body_text = ?, body_html = ?, raw_headers = ?, attachments = ?
          WHERE account_id = ? AND id = ?`,
       )
       .run(
         m.bodyText,
         m.bodyHtml ?? null,
         JSON.stringify(m.headers),
+        m.attachments.length > 0 ? JSON.stringify(m.attachments) : null,
         this.accountId,
         m.id,
       )
@@ -310,7 +313,7 @@ export class MailCache {
       ...rowToMessageHeader(row),
       bodyText: row.body_text,
       bodyHtml: row.body_html ?? undefined,
-      attachments: [], // Attachment metadata not cached separately in v1.
+      attachments: row.attachments ? (JSON.parse(row.attachments) as AttachmentMeta[]) : [],
       headers: row.raw_headers ? JSON.parse(row.raw_headers) : {},
     }
   }
