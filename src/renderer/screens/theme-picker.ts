@@ -92,10 +92,20 @@ export class ThemePickerScreen implements Screen {
     s.statusBar([
       [
         { key: '?', label: 'Help' },
-        { key: 'Enter', label: 'Apply' },
         { key: 'Q', label: 'Cancel' },
+        { key: 'Enter', label: 'Apply' },
+        null,
+        null,
+        null,
       ],
-      [{ key: '↑↓', label: 'Preview' }],
+      [
+        null,
+        null,
+        { key: '↑↓', label: 'Preview' },
+        null,
+        null,
+        null,
+      ],
     ])
 
     s.flush()

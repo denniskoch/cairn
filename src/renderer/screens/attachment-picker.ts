@@ -106,10 +106,20 @@ export class AttachmentPickerScreen implements Screen {
     s.statusBar([
       [
         { key: '?', label: 'Help' },
-        { key: 'Enter', label: 'Save' },
         { key: 'Q', label: 'Back' },
+        { key: 'Enter', label: 'Save' },
+        null,
+        null,
+        null,
       ],
-      [{ key: '↑↓', label: 'Navigate' }],
+      [
+        null,
+        null,
+        { key: '↑↓', label: 'Navigate' },
+        null,
+        null,
+        null,
+      ],
     ])
 
     s.flush()

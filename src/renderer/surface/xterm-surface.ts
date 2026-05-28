@@ -1,10 +1,9 @@
 import type { Terminal } from '@xterm/xterm'
 import { CellGrid } from './buffer'
-import type { Attrs, StatusItem, Surface } from './types'
+import type { Attrs, StatusRow, Surface } from './types'
 
 const KEY_ATTRS: Attrs = { bold: true, inverse: true }
 const LABEL_ATTRS: Attrs = {}
-const STATUS_GAP = 4 // spaces between items
 
 export class XtermSurface implements Surface {
   private current: CellGrid
@@ -58,7 +57,7 @@ export class XtermSurface implements Surface {
     this.current.fill(row, col, width, char, attrs)
   }
 
-  statusBar(lines: StatusItem[][]): void {
+  statusBar(lines: StatusRow[]): void {
     if (lines.length === 0) return
     // Layout, bottom-up:
     //   rows-1               : bg-pad (inverse fill) — rounded corners cut into this
@@ -71,52 +70,34 @@ export class XtermSurface implements Surface {
     if (topPadRow >= 0) {
       this.current.fill(topPadRow, 0, this.cols, ' ')
     }
+
+    // The grid uses the widest row to determine column count, so a 4-item
+    // row and a 6-item row stay aligned at the leftmost four columns. If
+    // every row is empty we'd divide by zero — guard that.
+    const gridCols = Math.max(...lines.map((line) => line.length))
+    if (gridCols === 0) return
+    const cellWidth = Math.floor(this.cols / gridCols)
+
     for (let i = 0; i < lines.length; i++) {
       const row = startRow + i
       this.current.fill(row, 0, this.cols, ' ')
 
-      const left = lines[i].filter((it) => (it.align ?? 'left') === 'left')
-      const center = lines[i].filter((it) => it.align === 'center')
-      const right = lines[i].filter((it) => it.align === 'right')
-
-      // Left items, packed from col 0.
-      let leftEnd = 0
-      for (const item of left) {
-        const w = item.key.length + 1 + item.label.length
-        if (leftEnd + w > this.cols) break
-        this.current.text(row, leftEnd, item.key, KEY_ATTRS)
-        this.current.text(row, leftEnd + item.key.length, ' ' + item.label, LABEL_ATTRS)
-        leftEnd += w + STATUS_GAP
-      }
-
-      // Right items, packed from right edge (rightmost listed item is leftmost).
-      let rightStart = this.cols
-      for (let j = right.length - 1; j >= 0; j--) {
-        const item = right[j]
-        const w = item.key.length + 1 + item.label.length
-        const start = rightStart - w
-        if (start < leftEnd) break
-        this.current.text(row, start, item.key, KEY_ATTRS)
-        this.current.text(row, start + item.key.length, ' ' + item.label, LABEL_ATTRS)
-        rightStart = start - STATUS_GAP
-      }
-
-      // Center items: pack together, then place the group centered between
-      // leftEnd and rightStart.
-      if (center.length > 0) {
-        const widths = center.map((it) => it.key.length + 1 + it.label.length)
-        const totalWidth =
-          widths.reduce((sum, w) => sum + w, 0) + STATUS_GAP * (center.length - 1)
-        const available = rightStart - leftEnd
-        if (totalWidth <= available) {
-          let col = leftEnd + Math.max(0, Math.floor((available - totalWidth) / 2))
-          for (let j = 0; j < center.length; j++) {
-            const item = center[j]
-            this.current.text(row, col, item.key, KEY_ATTRS)
-            this.current.text(row, col + item.key.length, ' ' + item.label, LABEL_ATTRS)
-            col += widths[j] + STATUS_GAP
-          }
-        }
+      const line = lines[i]
+      for (let c = 0; c < line.length; c++) {
+        const item = line[c]
+        if (!item) continue
+        const cellStart = c * cellWidth
+        // Label is rendered as `key + space + label`. If the combined
+        // length exceeds the cell width, truncate the label tail —
+        // dropping the key would lose the keybind hint, which is the
+        // whole point of the entry.
+        const maxLabelLen = Math.max(0, cellWidth - item.key.length - 1)
+        const label =
+          item.label.length > maxLabelLen
+            ? item.label.slice(0, maxLabelLen)
+            : item.label
+        this.current.text(row, cellStart, item.key, KEY_ATTRS)
+        this.current.text(row, cellStart + item.key.length, ' ' + label, LABEL_ATTRS)
       }
     }
   }

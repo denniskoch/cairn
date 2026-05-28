@@ -33,12 +33,16 @@ export interface Cell {
 export interface StatusItem {
   key: string
   label: string
-  /** Where on the row to place this item. 'left' (default) packs from the
-   * left edge; 'center' packs around the center of the bar; 'right' packs
-   * from the right edge. Multiple items in the same alignment stack in
-   * declaration order. */
-  align?: 'left' | 'center' | 'right'
 }
+
+/** A row in the status bar. Items are positioned by array index into a
+ * fixed grid of cells; `null` is an explicit empty cell that preserves
+ * vertical alignment across rows. Modeled on Alpine's keymenu, which
+ * lays its commands out in a 2-row × 6-column grid where empty slots
+ * are equally important to the visual rhythm as filled ones — pressing
+ * `?` in Alpine consistently lands at the same column whether the
+ * surrounding commands are short ("Quit") or long ("PrevMsg"). */
+export type StatusRow = ReadonlyArray<StatusItem | null>
 
 export interface Surface {
   readonly cols: number
@@ -47,7 +51,12 @@ export interface Surface {
   cell(row: number, col: number, char: string, attrs?: Attrs): void
   text(row: number, col: number, str: string, attrs?: Attrs): void
   fill(row: number, col: number, width: number, char: string, attrs?: Attrs): void
-  statusBar(lines: StatusItem[][]): void
+  /** Draw the keymenu at the bottom of the screen. Each row is a fixed-
+   * length array of slots; the renderer uses the widest row to compute a
+   * uniform cell width so all rows align in columns. `null` slots are
+   * empty cells, not absent items — they still consume their grid
+   * position. */
+  statusBar(lines: StatusRow[]): void
   /** Place the visible terminal cursor. Pass null to hide it.
    * clear() resets to hidden so non-editing screens default to no visible
    * cursor; editing screens (compose) call this after their draw. */

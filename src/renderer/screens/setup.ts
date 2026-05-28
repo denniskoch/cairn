@@ -126,10 +126,20 @@ export class SetupScreen implements Screen {
     s.statusBar([
       [
         { key: '?', label: 'Help' },
-        { key: 'Enter', label: 'Change' },
         { key: 'Q', label: 'Back' },
+        { key: 'Enter', label: 'Change' },
+        null,
+        null,
+        null,
       ],
-      [{ key: '↑↓', label: 'Navigate' }],
+      [
+        null,
+        null,
+        { key: '↑↓', label: 'Navigate' },
+        null,
+        null,
+        null,
+      ],
     ])
 
     s.flush()

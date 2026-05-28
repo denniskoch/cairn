@@ -75,8 +75,10 @@ export class HelpScreen implements Screen {
         { key: '↑↓', label: 'Scroll' },
         { key: 'Spc', label: 'PgDn' },
         { key: 'b', label: 'PgUp' },
+        null,
+        null,
       ],
-      [],
+      [null, null, null, null, null, null],
     ])
 
     s.flush()

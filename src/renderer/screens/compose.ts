@@ -374,20 +374,26 @@ export class ComposeScreen implements Screen {
       )
     }
 
+    // Compose is pico-style: a 2×6 grid of Ctrl-key chords. Modeled on
+    // pico/nano's status bar layout — file/text ops on row 1, control
+    // flow + navigation on row 2. We don't currently surface ^J Justify
+    // or ^T Spell, so slot 6 on both rows is null.
     s.statusBar([
       [
         { key: '^G', label: 'Help' },
         { key: '^X', label: 'Send' },
-        { key: '^R', label: 'Read file' },
+        { key: '^R', label: 'ReadFile' },
         { key: '^Y', label: 'PgUp' },
         { key: '^K', label: 'Cut' },
+        null,
       ],
       [
         { key: '^O', label: 'Drafts' },
         { key: '^C', label: 'Cancel' },
-        { key: '^W', label: 'Where is' },
+        { key: '^W', label: 'WhereIs' },
         { key: '^V', label: 'PgDn' },
         { key: '^U', label: 'UnCut' },
+        null,
       ],
     ])
 

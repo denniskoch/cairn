@@ -73,11 +73,14 @@ export class ReAuthScreen implements Screen {
 
     s.statusBar([
       [
-        { key: 'A', label: 'Authenticate' },
+        { key: '?', label: 'Help' },
         { key: 'Q', label: 'Quit' },
-        { key: '?', label: 'Help', align: 'right' },
+        { key: 'A', label: 'Authenticate' },
+        null,
+        null,
+        null,
       ],
-      [],
+      [null, null, null, null, null, null],
     ])
 
     s.flush()

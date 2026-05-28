@@ -1,4 +1,4 @@
-export type { Attrs, Cell, Color, StatusItem, Surface } from './types'
+export type { Attrs, Cell, Color, StatusItem, StatusRow, Surface } from './types'
 export { DEFAULT_ATTRS, defaultCell } from './types'
 export { attrsEqual, attrsToAnsi } from './attrs'
 export { CellGrid } from './buffer'

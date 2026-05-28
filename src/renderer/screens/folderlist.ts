@@ -97,14 +97,18 @@ export class FolderlistScreen implements Screen {
     s.statusBar([
       [
         { key: '?', label: 'Help' },
+        null,
+        { key: 'P', label: 'PrevFldr' },
+        { key: 'N', label: 'NextFldr' },
+        null,
         { key: 'L', label: 'Refresh' },
-        { key: 'Q', label: 'Quit' },
-        { key: 'N', label: 'Next folder' },
-        { key: 'P', label: 'Prev folder' },
       ],
       [
+        { key: 'Q', label: 'MainMenu' },
+        null,
         { key: 'Enter', label: 'Select' },
         { key: '↑↓', label: 'Navigate' },
+        null,
         { key: 'O', label: 'Other' },
       ],
     ])

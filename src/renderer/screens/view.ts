@@ -180,17 +180,17 @@ export class ViewScreen implements Screen {
       [
         { key: '?', label: 'Help' },
         { key: 'R', label: 'Reply' },
-        { key: 'A', label: 'Reply-all' },
+        { key: 'A', label: 'ReplyAll' },
         { key: 'F', label: 'Forward' },
         { key: 'D', label: 'Delete' },
-        { key: 'N', label: 'Next' },
+        { key: 'N', label: 'NextMsg' },
       ],
       [
+        { key: 'Q', label: 'Index' },
         { key: 'Spc', label: 'PgDn' },
         { key: 'b', label: 'PgUp' },
         { key: 'V', label: 'Attach' },
         { key: 'H', label: 'Headers' },
-        { key: 'Q', label: 'Index' },
         { key: 'O', label: 'Other' },
       ],
     ])

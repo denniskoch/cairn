@@ -87,10 +87,17 @@ export class SearchResultsScreen implements Screen {
         { key: '?', label: 'Help' },
         { key: 'Q', label: 'Index' },
         { key: 'Enter', label: 'View' },
+        null,
+        { key: 'R', label: 'Reply' },
+        null,
       ],
       [
+        null,
+        null,
         { key: '↑↓', label: 'Navigate' },
-        { key: 'R', label: 'Reply', align: 'right' },
+        null,
+        null,
+        null,
       ],
     ])
 

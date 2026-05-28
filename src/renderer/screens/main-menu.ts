@@ -174,18 +174,30 @@ export class MainMenuScreen implements Screen {
       )
     }
 
+    // 6-column grid, modeled on Alpine pith/keymenu.c main_keys array.
+    // Most slots on Alpine's main-menu page are intentionally NULL to
+    // produce the keymenu's recognizable rhythm. The `> [<action>]` slot
+    // is Cairn's addition — Alpine surfaces the same idea via the
+    // currently-highlighted menu line, but our cursor model puts the
+    // affordance in the keymenu instead. Placed in slot 2 of row 2 so
+    // it doesn't intrude on the `?/P/R` and `O/N/K` vertical alignment.
     const actionLabel = currentActionLabel(this.cursor)
     s.statusBar([
       [
         { key: '?', label: 'Help' },
-        { key: 'P', label: 'PrevCmd', align: 'center' },
-        { key: 'R', label: 'RelNotes', align: 'right' },
+        null,
+        { key: 'P', label: 'PrevCmd' },
+        null,
+        { key: 'R', label: 'RelNotes' },
+        null,
       ],
       [
         { key: 'O', label: 'OTHER CMDS' },
         { key: '>', label: `[${actionLabel}]` },
-        { key: 'N', label: 'NextCmd', align: 'center' },
-        { key: 'K', label: 'KBLock', align: 'right' },
+        { key: 'N', label: 'NextCmd' },
+        null,
+        { key: 'K', label: 'KBLock' },
+        null,
       ],
     ])
 
