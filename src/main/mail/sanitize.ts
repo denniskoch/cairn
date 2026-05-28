@@ -35,14 +35,19 @@ export function extractBody(
   uniqueBody: GraphBodyLike,
   body: GraphBodyLike,
 ): { bodyText: string; bodyHtml?: string } {
-  if (uniqueBody?.contentType === 'text' && uniqueBody.content) {
-    return { bodyText: uniqueBody.content }
-  }
+  // Prefer `body` (full message) over `uniqueBody` (Graph's stripped-to-
+  // just-the-new-content version). uniqueBody hides quoted history which
+  // makes thread replies cleaner — but for forwards the forwarded content
+  // IS the message and uniqueBody collapses it to just the wrapper. Pine
+  // shows the whole body; user scrolls. Same here.
   if (body?.contentType === 'text' && body.content) {
     return { bodyText: body.content }
   }
+  if (uniqueBody?.contentType === 'text' && uniqueBody.content) {
+    return { bodyText: uniqueBody.content }
+  }
 
-  const html = uniqueBody?.content ?? body?.content ?? ''
+  const html = body?.content ?? uniqueBody?.content ?? ''
   if (!html) return { bodyText: '' }
 
   const sanitized = sanitizeHtmlBody(html)
