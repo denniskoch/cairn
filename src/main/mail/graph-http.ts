@@ -11,6 +11,11 @@ export type GraphRequestOpts = {
   body?: unknown
   query?: Query
   rawUrl?: string
+  /** Extra request headers merged on top of the default
+   * Authorization / Accept / Content-Type set. Used for things like
+   * ConsistencyLevel=eventual that Graph requires for $search +
+   * $count against /users. */
+  headers?: Record<string, string>
 }
 
 export async function graphRequest<T>(
@@ -38,6 +43,7 @@ export async function graphRequest<T>(
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json'
   }
+  if (opts.headers) Object.assign(headers, opts.headers)
 
   let response: Response
   try {

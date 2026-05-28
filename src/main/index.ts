@@ -12,6 +12,7 @@ import {
   getAccessToken,
   getCurrentAccountId,
 } from './auth/msal'
+import { ContactsProvider } from './contacts/provider'
 import { GraphProvider } from './mail/graph'
 import { MailCache } from './mail/cache'
 import { SyncScheduler } from './mail/sync'
@@ -34,6 +35,7 @@ process.title = 'Cairn'
 let mainWindow: BrowserWindow | null = null
 let db: Database.Database | null = null
 let graphProvider: GraphProvider | null = null
+let contactsProvider: ContactsProvider | null = null
 let sync: SyncScheduler | null = null
 let cache: MailCache | null = null
 
@@ -84,6 +86,7 @@ function initMailLayer(accountId: string): void {
   cache = new MailCache(db, accountId)
   sync = new SyncScheduler(cache, getAccessToken)
   graphProvider = new GraphProvider(getAccessToken, cache, sync)
+  contactsProvider = new ContactsProvider(getAccessToken)
 
   sync.events.on('mail', (event: MailEvent) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -324,6 +327,24 @@ function registerIpcHandlers(): void {
     }
     return out
   })
+
+  ipcMain.handle(
+    'cairn:contacts:lookup',
+    (_, query: unknown, limit: unknown) => {
+      if (typeof query !== 'string') {
+        throw new TypeError('contacts:lookup: query must be a string')
+      }
+      if (limit !== undefined && typeof limit !== 'number') {
+        throw new TypeError(
+          'contacts:lookup: limit must be a number or undefined',
+        )
+      }
+      if (!contactsProvider) {
+        throw new Error('contacts: provider not initialized')
+      }
+      return contactsProvider.lookup(query, limit)
+    },
+  )
 }
 
 app.whenReady().then(async () => {

@@ -67,6 +67,10 @@ const api: CairnApi = {
       }
     },
   },
+  contacts: {
+    lookup: (query, limit) =>
+      ipcRenderer.invoke('cairn:contacts:lookup', query, limit),
+  },
 }
 
 contextBridge.exposeInMainWorld('cairn', api)

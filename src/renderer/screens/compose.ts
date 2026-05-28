@@ -1,3 +1,4 @@
+import type { ContactSuggestion } from '../../shared/contacts'
 import type { Address, Draft, Message } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
@@ -35,6 +36,17 @@ export class ComposeScreen implements Screen {
   private statusMessage = ''
   private statusIsError = false
   private statusTimer: ReturnType<typeof setTimeout> | null = null
+
+  // Address autocomplete state. `suggestions` is the visible dropdown;
+  // `suggestionCursor` is the highlighted row (used by step-3 keymap
+  // navigation, harmless in step-2 visuals). The cache is keyed by
+  // lowercased prefix so backspacing back to a previously-seen prefix
+  // doesn't re-hit Graph.
+  private suggestions: ContactSuggestion[] = []
+  private suggestionCursor = 0
+  private suggestionPrefix = ''
+  private suggestionTimer: ReturnType<typeof setTimeout> | null = null
+  private suggestionCache = new Map<string, ContactSuggestion[]>()
 
   private ctx: ScreenContext | null = null
   private unsubscribeText: (() => void) | null = null
@@ -131,7 +143,210 @@ export class ComposeScreen implements Screen {
       clearTimeout(this.statusTimer)
       this.statusTimer = null
     }
+    if (this.suggestionTimer) {
+      clearTimeout(this.suggestionTimer)
+      this.suggestionTimer = null
+    }
     this.ctx = null
+  }
+
+  // ---- address autocomplete ----
+
+  /** The text the user is currently typing as the *next* address —
+   * everything after the last comma or semicolon in the To: field.
+   * Strips surrounding whitespace so the user's separator style
+   * ("a@x, b@x" or "a@x ;b@x") doesn't affect the lookup query. */
+  private currentLookupPrefix(): string {
+    if (this.active !== 'to') return ''
+    const upToCursor = this.to.slice(0, this.toCol)
+    const lastSep = Math.max(
+      upToCursor.lastIndexOf(','),
+      upToCursor.lastIndexOf(';'),
+    )
+    return upToCursor.slice(lastSep + 1).trim()
+  }
+
+  /** Debounced lookup against the contacts IPC. ~250ms lets the user
+   * keep typing without firing a Graph request on every keystroke,
+   * which would both rate-limit the app and produce flicker. */
+  private scheduleLookup(): void {
+    if (this.suggestionTimer) clearTimeout(this.suggestionTimer)
+    const prefix = this.currentLookupPrefix()
+    if (prefix.length < 2) {
+      this.clearSuggestions()
+      return
+    }
+    this.suggestionTimer = setTimeout(() => {
+      void this.runLookup(prefix)
+    }, 250)
+  }
+
+  private async runLookup(prefix: string): Promise<void> {
+    const key = prefix.toLowerCase()
+    const cached = this.suggestionCache.get(key)
+    if (cached) {
+      this.applySuggestions(prefix, cached)
+      return
+    }
+    try {
+      const result = await window.cairn.contacts.lookup(prefix, 8)
+      this.suggestionCache.set(key, result)
+      this.applySuggestions(prefix, result)
+    } catch (err) {
+      // Silently swallow — autocomplete failing shouldn't block compose.
+      console.warn('contacts.lookup failed:', err)
+    }
+  }
+
+  private applySuggestions(prefix: string, list: ContactSuggestion[]): void {
+    // The user may have typed more since this lookup was fired; only
+    // apply when our prefix is still what they're looking at, otherwise
+    // we'd show stale results.
+    if (this.currentLookupPrefix() !== prefix) return
+    this.suggestions = list
+    this.suggestionPrefix = prefix
+    this.suggestionCursor = 0
+    this.ctx?.invalidate()
+  }
+
+  private clearSuggestions(): void {
+    if (this.suggestions.length === 0 && !this.suggestionPrefix) return
+    this.suggestions = []
+    this.suggestionPrefix = ''
+    this.suggestionCursor = 0
+    this.ctx?.invalidate()
+  }
+
+  /** Is the dropdown currently the active UI element? Used to gate
+   * Up/Down/Enter/Tab so they navigate suggestions instead of fields
+   * when the user is mid-completion. */
+  private dropdownActive(): boolean {
+    return this.active === 'to' && this.suggestions.length > 0
+  }
+
+  private moveSuggestionCursor(delta: 1 | -1): void {
+    if (!this.dropdownActive()) return
+    const len = this.suggestions.length
+    this.suggestionCursor = (this.suggestionCursor + delta + len) % len
+  }
+
+  /** Replace the in-progress prefix (text from the last comma/semicolon
+   * up to the cursor) with the highlighted suggestion's formatted form
+   * 'Name <email>'. If `addSeparator` is true (used by the comma/semi
+   * handlers), the formatted address gets a trailing ', ' so the user
+   * can keep typing the next recipient. */
+  private acceptSuggestion(addSeparator: boolean): void {
+    if (!this.dropdownActive()) return
+    const sug = this.suggestions[this.suggestionCursor]
+    if (!sug) return
+    const formatted = sug.name ? `${sug.name} <${sug.email}>` : sug.email
+    this.replaceCurrentPrefix(formatted, addSeparator)
+    this.clearSuggestions()
+  }
+
+  /** Comma/semicolon handler. If the dropdown has a highlighted
+   * suggestion, accept it (with separator). Otherwise just insert the
+   * raw separator so the user can type a literal address themselves
+   * and move on. */
+  private commitAddressSeparator(): void {
+    if (this.dropdownActive()) {
+      this.acceptSuggestion(true)
+      return
+    }
+    // No suggestion — insert ', ' so committed segments are always
+    // followed by the same separator regardless of how they got there.
+    this.replaceCurrentPrefix(this.currentLookupPrefix(), true)
+  }
+
+  /** Splice into this.to: replace [lastSep+1, cursor) with the formatted
+   * address plus optional ', '. Leaves anything to the RIGHT of the
+   * cursor untouched (rare — the user usually completes at end-of-line
+   * — but supported for completeness). */
+  private replaceCurrentPrefix(formatted: string, addSeparator: boolean): void {
+    if (this.active !== 'to') return
+    const upToCursor = this.to.slice(0, this.toCol)
+    const after = this.to.slice(this.toCol)
+    const lastSep = Math.max(
+      upToCursor.lastIndexOf(','),
+      upToCursor.lastIndexOf(';'),
+    )
+    const before = upToCursor.slice(0, lastSep + 1)
+    // Preserve one space after the separator if there isn't already one,
+    // so committed segments read 'a@x.com, b@x.com' not 'a@x.com,b@x.com'.
+    const head = lastSep >= 0 && !before.endsWith(' ') ? before + ' ' : before
+    const tail = addSeparator ? ', ' : ''
+    const newValue = head + formatted + tail + after
+    this.to = newValue
+    this.toCol = (head + formatted + tail).length
+  }
+
+  /** Paint the dropdown as an overlay on top of the body region,
+   * starting at `topRow`. One row of inverse "title" with the count,
+   * then up to MAX_VISIBLE rows of name/email/context, then a thin
+   * footer rule. The highlighted row (suggestionCursor) is inverse.
+   * Source letter (C/P/U) sits in the right margin so the user can
+   * tell where each candidate came from. */
+  private renderSuggestions(s: Surface, topRow: number): void {
+    const MAX_VISIBLE = 6
+    const headerAttrs: Attrs = { fg: 'cyan', bold: true }
+    const cursorAttrs: Attrs = { inverse: true }
+    const muted: Attrs = { fg: 'brightBlack' }
+
+    const visible = this.suggestions.slice(0, MAX_VISIBLE)
+    const totalRows = 1 + visible.length + 1 // title + rows + footer
+    const maxRow = Math.min(topRow + totalRows, s.rows - 1 - STATUS_BAR_CHROME)
+    if (maxRow <= topRow + 2) return // not enough room
+
+    // Title row
+    s.fill(topRow, 0, s.cols, ' ', headerAttrs)
+    const title = ` ${visible.length} match${visible.length === 1 ? '' : 'es'} for "${this.suggestionPrefix}" `
+    s.text(topRow, 0, title.slice(0, s.cols), headerAttrs)
+
+    // Layout: name (24) | email (40) | source letter (1, right margin)
+    const NAME_COL = 2
+    const NAME_WIDTH = 24
+    const EMAIL_COL = NAME_COL + NAME_WIDTH + 1
+    const EMAIL_WIDTH = Math.max(20, s.cols - EMAIL_COL - 4)
+    const SOURCE_COL = s.cols - 2
+
+    for (let i = 0; i < visible.length; i++) {
+      const row = topRow + 1 + i
+      if (row >= maxRow) break
+      const sug = visible[i]
+      const isActive = i === this.suggestionCursor
+      const rowAttrs: Attrs = isActive ? cursorAttrs : {}
+
+      if (isActive) s.fill(row, 0, s.cols, ' ', cursorAttrs)
+
+      // Marker arrow in col 0 for the highlighted row only.
+      if (isActive) s.cell(row, 0, '▸', cursorAttrs)
+
+      s.text(
+        row,
+        NAME_COL,
+        sug.name.slice(0, NAME_WIDTH).padEnd(NAME_WIDTH),
+        rowAttrs,
+      )
+      s.text(
+        row,
+        EMAIL_COL,
+        sug.email.slice(0, EMAIL_WIDTH).padEnd(EMAIL_WIDTH),
+        isActive ? cursorAttrs : muted,
+      )
+      s.cell(
+        row,
+        SOURCE_COL,
+        sug.source === 'contact' ? 'C' : sug.source === 'person' ? 'P' : 'U',
+        rowAttrs,
+      )
+    }
+
+    // Footer rule closes the dropdown so it doesn't blur into the body
+    // underneath.
+    const footerRow = topRow + 1 + visible.length
+    if (footerRow < maxRow) {
+      s.fill(footerRow, 0, s.cols, '─', { fg: 'cyan' })
+    }
   }
 
   // ---- input handling ----
@@ -178,6 +393,7 @@ export class ComposeScreen implements Screen {
       case 'to':
         this.to = value
         this.toCol = col
+        this.scheduleLookup()
         break
       case 'cc':
         this.cc = value
@@ -194,6 +410,10 @@ export class ComposeScreen implements Screen {
     const idx = FIELDS.indexOf(this.active)
     const next = (idx + direction + FIELDS.length) % FIELDS.length
     this.active = FIELDS[next]
+    // Leaving To: should drop the dropdown; entering To: should re-query
+    // for whatever prefix is sitting at the cursor.
+    if (this.active === 'to') this.scheduleLookup()
+    else this.clearSuggestions()
   }
 
   private backspace(): void {
@@ -404,6 +624,15 @@ export class ComposeScreen implements Screen {
       s.text(bodyStartRow + i, 0, line.slice(0, s.cols))
     }
 
+    // Address autocomplete dropdown — drawn AFTER body so it overlays
+    // the top of the body region without permanently shrinking it.
+    // Only painted when the user is in the To: field and has typed a
+    // matchable prefix; clears as soon as the prefix changes back to
+    // empty / under-2-chars.
+    if (this.active === 'to' && this.suggestions.length > 0) {
+      this.renderSuggestions(s, bodyStartRow)
+    }
+
     // Status message line (above status bar)
     if (this.statusMessage) {
       const row = s.rows - statusBarRows - 1 - STATUS_BAR_CHROME
@@ -450,7 +679,42 @@ export class ComposeScreen implements Screen {
       ? { ...LABEL_ATTRS, inverse: true }
       : LABEL_ATTRS
     s.text(row, 0, (label + ':').padEnd(HEADER_LABEL_WIDTH), labelAttrs)
-    s.text(row, HEADER_LABEL_WIDTH, value.slice(0, s.cols - HEADER_LABEL_WIDTH))
+
+    // To/Cc rows: split on commas/semicolons so already-committed
+    // addresses render bold (chip-like) and the actively-typed
+    // segment renders plain. Other rows draw straight text.
+    if (label === 'To' || label === 'Cc') {
+      this.drawAddressLine(s, row, HEADER_LABEL_WIDTH, value)
+    } else {
+      s.text(row, HEADER_LABEL_WIDTH, value.slice(0, s.cols - HEADER_LABEL_WIDTH))
+    }
+  }
+
+  /** Render an address-list value with committed segments bolded and
+   * the trailing in-progress segment in normal weight. Cheap visual
+   * "chip" effect without inventing new surface primitives. The split
+   * is on , or ; — same separators commitAddressSeparator inserts. */
+  private drawAddressLine(s: Surface, row: number, startCol: number, value: string): void {
+    const chipAttrs: Attrs = { bold: true, fg: 'cyan' }
+    const maxLen = s.cols - startCol
+    const truncated = value.slice(0, maxLen)
+
+    // Find the boundary between "committed" (everything up through the
+    // last separator + space) and the in-progress tail.
+    const lastSep = Math.max(
+      truncated.lastIndexOf(','),
+      truncated.lastIndexOf(';'),
+    )
+    if (lastSep < 0) {
+      // No commits yet — entire value is in progress.
+      s.text(row, startCol, truncated)
+      return
+    }
+    const committedEnd = lastSep + 1 // include the separator char itself
+    const committed = truncated.slice(0, committedEnd)
+    const tail = truncated.slice(committedEnd)
+    s.text(row, startCol, committed, chipAttrs)
+    if (tail.length > 0) s.text(row, startCol + committed.length, tail)
   }
 
   private placeCursor(s: Surface): void {
@@ -472,11 +736,19 @@ export class ComposeScreen implements Screen {
     return {
       // Movement
       Up: () => {
-        this.moveUp()
+        if (this.dropdownActive()) {
+          this.moveSuggestionCursor(-1)
+        } else {
+          this.moveUp()
+        }
         this.ctx?.invalidate()
       },
       Down: () => {
-        this.moveDown()
+        if (this.dropdownActive()) {
+          this.moveSuggestionCursor(1)
+        } else {
+          this.moveDown()
+        }
         this.ctx?.invalidate()
       },
       Left: () => {
@@ -498,7 +770,28 @@ export class ComposeScreen implements Screen {
 
       // Editing
       Enter: () => {
-        this.newline()
+        if (this.dropdownActive()) {
+          this.acceptSuggestion(false /* no trailing separator */)
+        } else {
+          this.newline()
+        }
+        this.ctx?.invalidate()
+      },
+      Escape: () => {
+        // Only used to dismiss the dropdown — otherwise leave Escape
+        // alone so xterm / electron defaults still work.
+        if (this.dropdownActive()) {
+          this.clearSuggestions()
+        }
+      },
+      ',': () => {
+        if (this.active === 'to') this.commitAddressSeparator()
+        else this.handleTextInput(',')
+        this.ctx?.invalidate()
+      },
+      ';': () => {
+        if (this.active === 'to') this.commitAddressSeparator()
+        else this.handleTextInput(';')
         this.ctx?.invalidate()
       },
       Backspace: () => {
@@ -510,6 +803,9 @@ export class ComposeScreen implements Screen {
         this.ctx?.invalidate()
       },
       Tab: () => {
+        // Tab with dropdown open accepts the highlight, then cycles to
+        // the next field — saves the user from Enter-then-Tab.
+        if (this.dropdownActive()) this.acceptSuggestion(false)
         this.cycleField(1)
         this.ctx?.invalidate()
       },
@@ -529,6 +825,11 @@ export class ComposeScreen implements Screen {
         { key: 'Enter', description: 'New line in body, or next field in header' },
         { key: '↑ ↓ ← →', description: 'Move cursor in body' },
         { key: 'Backspace / Delete', description: 'Edit text' },
+        {
+          key: 'To: autocomplete',
+          description:
+            'Type 2+ chars → dropdown. ↑↓ to highlight, Enter/Tab to accept, , or ; to accept + continue, Esc to dismiss.',
+        },
         { key: 'Home / End', description: 'Jump to start / end of line' },
         { key: '^X', description: 'Send message' },
         { key: '^O', description: 'Save as draft' },

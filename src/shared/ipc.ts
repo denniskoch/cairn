@@ -1,3 +1,4 @@
+import type { ContactSuggestion } from './contacts'
 import type {
   Attachment,
   Draft,
@@ -75,6 +76,13 @@ export interface CairnApi {
     /** Fires true when a background sync starts (going from idle to busy),
      * false when the last in-flight sync finishes. */
     onActiveChanged(cb: (active: boolean) => void): () => void
+  }
+  contacts: {
+    /** Look up address-completion candidates. Returns merged + ranked
+     * matches from the user's contacts and Microsoft's people
+     * suggestions (and the GAL once that scope is consented). Empty
+     * array for queries shorter than 2 chars. */
+    lookup(query: string, limit?: number): Promise<ContactSuggestion[]>
   }
 }
 
