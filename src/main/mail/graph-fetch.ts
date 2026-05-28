@@ -1,183 +1,44 @@
+/**
+ * HTTP orchestration against Microsoft Graph. The wire types, the
+ * mappers between Graph shapes and Cairn's domain types, and the
+ * $select / $expand constants live in graph-types.ts; this file only
+ * coordinates pagination, recursion into childFolders, and the small
+ * post-fetch fixups (meeting-event body fallback, attachment metadata
+ * decoding).
+ */
+
 import type {
-  Address,
   Attachment,
-  AttachmentInput,
-  AttachmentMeta,
   Folder,
-  MeetingInfo,
-  MeetingKind,
-  MeetingResponse,
   Message,
   MessageHeader,
 } from '../../shared/mail'
-import { graphRequest, type GetTokenFn } from './graph-http'
 import { MailError } from './errors'
+import { graphRequest, type GetTokenFn } from './graph-http'
+import {
+  FULL_MESSAGE_EXPAND,
+  FULL_MESSAGE_SELECT,
+  MESSAGE_SELECT,
+  flattenHeaders,
+  toAttachmentMeta,
+  toMeetingInfo,
+  toMessageHeader,
+  type GraphFileAttachment,
+  type GraphFolder,
+  type GraphFullMessage,
+  type GraphMessage,
+  type GraphPaginated,
+} from './graph-types'
 import { extractBody } from './sanitize'
 
-type GraphFolder = {
-  id: string
-  displayName: string
-  parentFolderId?: string | null
-  /** Number of immediate child folders. Used by fetchFolders to decide
-   * whether to recurse into /childFolders for this folder. Zero means
-   * the folder is a leaf and the recursion can stop. */
-  childFolderCount?: number
-  unreadItemCount?: number
-  totalItemCount?: number
-}
-
-type GraphPaginated<T> = {
-  value: T[]
-  '@odata.nextLink'?: string
-}
-
-type GraphEmailAddress = {
-  emailAddress: { address?: string; name?: string }
-}
-
-type GraphMeetingMessageType =
-  | 'none'
-  | 'meetingRequest'
-  | 'meetingCancelled'
-  | 'meetingAccepted'
-  | 'meetingTentativelyAccepted'
-  | 'meetingDeclined'
-
-type GraphDateTimeTimeZone = { dateTime: string; timeZone: string }
-type GraphLocation = { displayName?: string }
-type GraphResponseStatus = {
-  response?:
-    | 'none'
-    | 'organizer'
-    | 'tentativelyAccepted'
-    | 'accepted'
-    | 'declined'
-    | 'notResponded'
-  time?: string
-}
-
-type GraphEvent = {
-  id?: string
-  start?: GraphDateTimeTimeZone
-  end?: GraphDateTimeTimeZone
-  isAllDay?: boolean
-  location?: GraphLocation
-  organizer?: GraphEmailAddress
-  responseStatus?: GraphResponseStatus
-  body?: GraphBody
-}
-
-type GraphMessage = {
-  id: string
-  conversationId?: string
-  subject?: string
-  from?: GraphEmailAddress
-  toRecipients?: GraphEmailAddress[]
-  ccRecipients?: GraphEmailAddress[]
-  receivedDateTime?: string
-  bodyPreview?: string
-  hasAttachments?: boolean
-  isRead?: boolean
-  flag?: { flagStatus?: 'notFlagged' | 'flagged' | 'complete' }
-  isDraft?: boolean
-  meetingMessageType?: GraphMeetingMessageType
-}
-
-type GraphBody = { contentType: 'text' | 'html'; content: string }
-type GraphInternetHeader = { name: string; value: string }
-
-type GraphAttachmentMeta = {
-  id: string
-  name?: string
-  contentType?: string
-  size?: number
-  isInline?: boolean
-}
-
-type GraphFileAttachment = GraphAttachmentMeta & {
-  contentBytes?: string
-}
-
-type GraphFullMessage = GraphMessage & {
-  parentFolderId?: string
-  body?: GraphBody
-  uniqueBody?: GraphBody
-  internetMessageHeaders?: GraphInternetHeader[]
-  attachments?: GraphAttachmentMeta[]
-  event?: GraphEvent | null
-}
-
-type GraphRecipient = { emailAddress: { address: string } }
-
-type GraphFileAttachmentInput = {
-  '@odata.type': '#microsoft.graph.fileAttachment'
-  name: string
-  contentType: string
-  contentBytes: string
-}
-
-export type GraphMessageInput = {
-  subject: string
-  body: { contentType: 'Text'; content: string }
-  toRecipients: GraphRecipient[]
-  ccRecipients?: GraphRecipient[]
-  bccRecipients?: GraphRecipient[]
-  attachments?: GraphFileAttachmentInput[]
-}
-
-// meetingMessageType lives on the EventMessage subtype of Message, so
-// it has to be qualified with the type cast 'microsoft.graph.eventMessage/'
-// in $select — otherwise Graph rejects with "no such property on
-// Microsoft.OutlookServices.Message". Same trick for the 'event'
-// navigation property on $expand.
-const MEETING_TYPE_PROP = 'microsoft.graph.eventMessage/meetingMessageType'
-// Pulls body too — for some meeting messages Graph returns an empty
-// message.body and keeps the real description on the event resource
-// (especially organizer-cancelled meetings and certain calendar-app
-// generated invites). extractBody falls back to event.body in that case.
-const MEETING_EVENT_EXPAND =
-  'microsoft.graph.eventMessage/event($select=id,start,end,isAllDay,location,organizer,responseStatus,body)'
-
-const MESSAGE_SELECT = [
-  'id',
-  'conversationId',
-  'subject',
-  'from',
-  'toRecipients',
-  'ccRecipients',
-  'receivedDateTime',
-  'bodyPreview',
-  'hasAttachments',
-  'isRead',
-  'flag',
-  'isDraft',
-  MEETING_TYPE_PROP,
-].join(',')
-
-const FULL_MESSAGE_SELECT = [
-  'id',
-  'conversationId',
-  'subject',
-  'from',
-  'toRecipients',
-  'ccRecipients',
-  'receivedDateTime',
-  'bodyPreview',
-  'hasAttachments',
-  'isRead',
-  'flag',
-  'isDraft',
-  'parentFolderId',
-  'body',
-  'uniqueBody',
-  'internetMessageHeaders',
-  MEETING_TYPE_PROP,
-].join(',')
-
-const FULL_MESSAGE_EXPAND = [
-  'attachments($select=id,name,contentType,size,isInline)',
-  MEETING_EVENT_EXPAND,
-].join(',')
+// Re-export the write helpers and message-input type so existing
+// importers of graph-fetch (graph.ts in particular) don't have to know
+// the mappers moved. Keeps the diff focused on the type relocation.
+export {
+  toGraphFileAttachment,
+  toGraphMessage,
+  type GraphMessageInput,
+} from './graph-types'
 
 // ----- read -----
 
@@ -343,142 +204,7 @@ export async function fetchAttachment(
   }
 }
 
-// ----- write helpers (Draft -> Graph body) -----
-
-export function toGraphMessage(draft: {
-  to: string[]
-  cc?: string[]
-  bcc?: string[]
-  subject: string
-  bodyText: string
-}): GraphMessageInput {
-  return {
-    subject: draft.subject,
-    body: { contentType: 'Text', content: draft.bodyText },
-    toRecipients: draft.to.map((address) => ({ emailAddress: { address } })),
-    ccRecipients: draft.cc?.map((address) => ({ emailAddress: { address } })),
-    bccRecipients: draft.bcc?.map((address) => ({ emailAddress: { address } })),
-  }
-}
-
-export function toGraphFileAttachment(
-  att: AttachmentInput,
-): GraphFileAttachmentInput {
-  return {
-    '@odata.type': '#microsoft.graph.fileAttachment',
-    name: att.name,
-    contentType: att.contentType,
-    contentBytes: Buffer.from(att.content).toString('base64'),
-  }
-}
-
-// ----- mapping helpers -----
-
-function toAddress(g: GraphEmailAddress | undefined): Address {
-  return {
-    email: g?.emailAddress.address ?? '(unknown)',
-    name: g?.emailAddress.name,
-  }
-}
-
-function toMessageHeader(m: GraphMessage): MessageHeader {
-  return {
-    id: m.id,
-    threadId: m.conversationId,
-    from: toAddress(m.from),
-    to: (m.toRecipients ?? []).map(toAddress),
-    cc: (m.ccRecipients ?? []).map(toAddress),
-    subject: m.subject ?? '(no subject)',
-    receivedAt: m.receivedDateTime ? new Date(m.receivedDateTime) : new Date(0),
-    preview: m.bodyPreview ?? '',
-    hasAttachments: m.hasAttachments ?? false,
-    isMeetingInvite: isInviteKind(m.meetingMessageType),
-    flags: {
-      read: m.isRead ?? false,
-      flagged: m.flag?.flagStatus === 'flagged',
-      draft: m.isDraft ?? false,
-    },
-    sizeBytes: 0,
-  }
-}
-
-/** Graph's meetingMessageType covers BOTH directions (attendee getting
- * an invite vs organizer getting a response). The index marker only
- * makes sense for the attendee side — invitations the user can act
- * on. Cancellations also surface so the user notices the meeting went
- * away. Organizer-side response messages don't get the marker. */
-function isInviteKind(t: GraphMeetingMessageType | undefined): boolean {
-  return t === 'meetingRequest' || t === 'meetingCancelled'
-}
-
-function toMeetingInfo(m: GraphFullMessage): MeetingInfo | undefined {
-  const t = m.meetingMessageType
-  if (!t || t === 'none' || !m.event) return undefined
-
-  const kind: MeetingKind =
-    t === 'meetingRequest'
-      ? 'request'
-      : t === 'meetingCancelled'
-        ? 'cancelled'
-        : t === 'meetingAccepted'
-          ? 'accepted'
-          : t === 'meetingTentativelyAccepted'
-            ? 'tentative'
-            : 'declined'
-
-  // Graph dateTimeTimeZone strings are 'YYYY-MM-DDTHH:MM:SS.fff' in
-  // the named zone (NOT ISO with Z). Date's parser accepts ISO without
-  // tz as local time, which is wrong; safest path is to ignore tz and
-  // assume UTC for display — close enough for v1 and the user can
-  // sanity-check against the organizer's local in the body.
-  const start = m.event.start?.dateTime
-    ? new Date(`${m.event.start.dateTime}Z`)
-    : new Date(0)
-  const end = m.event.end?.dateTime
-    ? new Date(`${m.event.end.dateTime}Z`)
-    : new Date(0)
-
-  const respMap: Record<NonNullable<GraphResponseStatus['response']>, MeetingResponse> = {
-    none: 'none',
-    organizer: 'organizer',
-    tentativelyAccepted: 'tentative',
-    accepted: 'accepted',
-    declined: 'declined',
-    notResponded: 'notResponded',
-  }
-  const myResponse: MeetingResponse =
-    respMap[m.event.responseStatus?.response ?? 'none'] ?? 'none'
-
-  return {
-    kind,
-    eventId: m.event.id,
-    start,
-    end,
-    isAllDay: m.event.isAllDay ?? false,
-    location: m.event.location?.displayName?.trim() || undefined,
-    organizer: toAddress(m.event.organizer),
-    myResponse,
-  }
-}
-
-function toAttachmentMeta(a: GraphAttachmentMeta): AttachmentMeta {
-  return {
-    id: a.id,
-    name: a.name ?? '(unnamed)',
-    contentType: a.contentType ?? 'application/octet-stream',
-    sizeBytes: a.size ?? 0,
-    isInline: a.isInline ?? false,
-  }
-}
-
-function flattenHeaders(headers?: GraphInternetHeader[]): Record<string, string> {
-  if (!headers) return {}
-  const out: Record<string, string> = {}
-  for (const h of headers) {
-    out[h.name] = h.value
-  }
-  return out
-}
+// ----- helpers -----
 
 function combineFilters(...parts: (string | undefined)[]): string | undefined {
   const live = parts.filter((p): p is string => !!p)
