@@ -178,12 +178,18 @@ function registerIpcHandlers(): void {
     },
   )
 
-  ipcMain.handle('cairn:mail:getMessage', (_, id: unknown) => {
+  ipcMain.handle('cairn:mail:getMessage', (_, id: unknown, opts: unknown) => {
     if (typeof id !== 'string') {
       throw new TypeError('mail:getMessage: id must be a string')
     }
+    if (opts !== undefined && (typeof opts !== 'object' || opts === null)) {
+      throw new TypeError('mail:getMessage: opts must be an object or undefined')
+    }
     if (!graphProvider) throw new Error('mail: provider not initialized')
-    return graphProvider.getMessage(id)
+    return graphProvider.getMessage(
+      id,
+      opts as { forceRefresh?: boolean } | undefined,
+    )
   })
 
   ipcMain.handle(
@@ -240,6 +246,31 @@ function registerIpcHandlers(): void {
     if (!graphProvider) throw new Error('mail: provider not initialized')
     return graphProvider.setFlags(id, flags as FlagUpdate)
   })
+
+  ipcMain.handle(
+    'cairn:mail:respondToInvite',
+    (_, id: unknown, kind: unknown, opts: unknown) => {
+      if (typeof id !== 'string') {
+        throw new TypeError('mail:respondToInvite: id must be a string')
+      }
+      if (kind !== 'accept' && kind !== 'tentative' && kind !== 'decline') {
+        throw new TypeError(
+          'mail:respondToInvite: kind must be accept | tentative | decline',
+        )
+      }
+      if (opts !== undefined && (typeof opts !== 'object' || opts === null)) {
+        throw new TypeError(
+          'mail:respondToInvite: opts must be an object or undefined',
+        )
+      }
+      if (!graphProvider) throw new Error('mail: provider not initialized')
+      return graphProvider.respondToInvite(
+        id,
+        kind,
+        opts as { comment?: string; sendResponse?: boolean } | undefined,
+      )
+    },
+  )
 
   ipcMain.handle(
     'cairn:mail:saveAttachment',

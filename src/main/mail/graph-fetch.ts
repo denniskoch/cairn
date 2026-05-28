@@ -4,6 +4,9 @@ import type {
   AttachmentInput,
   AttachmentMeta,
   Folder,
+  MeetingInfo,
+  MeetingKind,
+  MeetingResponse,
   Message,
   MessageHeader,
 } from '../../shared/mail'
@@ -32,6 +35,38 @@ type GraphEmailAddress = {
   emailAddress: { address?: string; name?: string }
 }
 
+type GraphMeetingMessageType =
+  | 'none'
+  | 'meetingRequest'
+  | 'meetingCancelled'
+  | 'meetingAccepted'
+  | 'meetingTentativelyAccepted'
+  | 'meetingDeclined'
+
+type GraphDateTimeTimeZone = { dateTime: string; timeZone: string }
+type GraphLocation = { displayName?: string }
+type GraphResponseStatus = {
+  response?:
+    | 'none'
+    | 'organizer'
+    | 'tentativelyAccepted'
+    | 'accepted'
+    | 'declined'
+    | 'notResponded'
+  time?: string
+}
+
+type GraphEvent = {
+  id?: string
+  start?: GraphDateTimeTimeZone
+  end?: GraphDateTimeTimeZone
+  isAllDay?: boolean
+  location?: GraphLocation
+  organizer?: GraphEmailAddress
+  responseStatus?: GraphResponseStatus
+  body?: GraphBody
+}
+
 type GraphMessage = {
   id: string
   conversationId?: string
@@ -45,6 +80,7 @@ type GraphMessage = {
   isRead?: boolean
   flag?: { flagStatus?: 'notFlagged' | 'flagged' | 'complete' }
   isDraft?: boolean
+  meetingMessageType?: GraphMeetingMessageType
 }
 
 type GraphBody = { contentType: 'text' | 'html'; content: string }
@@ -68,6 +104,7 @@ type GraphFullMessage = GraphMessage & {
   uniqueBody?: GraphBody
   internetMessageHeaders?: GraphInternetHeader[]
   attachments?: GraphAttachmentMeta[]
+  event?: GraphEvent | null
 }
 
 type GraphRecipient = { emailAddress: { address: string } }
@@ -88,6 +125,19 @@ export type GraphMessageInput = {
   attachments?: GraphFileAttachmentInput[]
 }
 
+// meetingMessageType lives on the EventMessage subtype of Message, so
+// it has to be qualified with the type cast 'microsoft.graph.eventMessage/'
+// in $select — otherwise Graph rejects with "no such property on
+// Microsoft.OutlookServices.Message". Same trick for the 'event'
+// navigation property on $expand.
+const MEETING_TYPE_PROP = 'microsoft.graph.eventMessage/meetingMessageType'
+// Pulls body too — for some meeting messages Graph returns an empty
+// message.body and keeps the real description on the event resource
+// (especially organizer-cancelled meetings and certain calendar-app
+// generated invites). extractBody falls back to event.body in that case.
+const MEETING_EVENT_EXPAND =
+  'microsoft.graph.eventMessage/event($select=id,start,end,isAllDay,location,organizer,responseStatus,body)'
+
 const MESSAGE_SELECT = [
   'id',
   'conversationId',
@@ -101,6 +151,7 @@ const MESSAGE_SELECT = [
   'isRead',
   'flag',
   'isDraft',
+  MEETING_TYPE_PROP,
 ].join(',')
 
 const FULL_MESSAGE_SELECT = [
@@ -120,10 +171,13 @@ const FULL_MESSAGE_SELECT = [
   'body',
   'uniqueBody',
   'internetMessageHeaders',
+  MEETING_TYPE_PROP,
 ].join(',')
 
-const ATTACHMENT_EXPAND =
-  'attachments($select=id,name,contentType,size,isInline)'
+const FULL_MESSAGE_EXPAND = [
+  'attachments($select=id,name,contentType,size,isInline)',
+  MEETING_EVENT_EXPAND,
+].join(',')
 
 // ----- read -----
 
@@ -222,16 +276,26 @@ export async function fetchFullMessage(
   const m: GraphFullMessage = await graphRequest(
     getToken,
     `/me/messages/${encodeURIComponent(id)}`,
-    { query: { $select: FULL_MESSAGE_SELECT, $expand: ATTACHMENT_EXPAND } },
+    { query: { $select: FULL_MESSAGE_SELECT, $expand: FULL_MESSAGE_EXPAND } },
   )
   const header = toMessageHeader(m)
-  const { bodyText, bodyHtml } = extractBody(m.uniqueBody, m.body)
+  let { bodyText, bodyHtml } = extractBody(m.uniqueBody, m.body)
+  const meeting = toMeetingInfo(m)
+  // Some meeting messages — particularly cancellations and some
+  // organizer-app-generated invites — return an empty message.body
+  // even though the event.body carries the description. Fall through.
+  if (!bodyText && m.event?.body) {
+    const ev = extractBody(undefined, m.event.body)
+    bodyText = ev.bodyText
+    bodyHtml = ev.bodyHtml
+  }
   const message: Message = {
     ...header,
     bodyText,
     bodyHtml,
     attachments: (m.attachments ?? []).map(toAttachmentMeta),
     headers: flattenHeaders(m.internetMessageHeaders),
+    ...(meeting ? { meeting } : {}),
   }
   return { message, folderId: m.parentFolderId ?? '' }
 }
@@ -328,12 +392,72 @@ function toMessageHeader(m: GraphMessage): MessageHeader {
     receivedAt: m.receivedDateTime ? new Date(m.receivedDateTime) : new Date(0),
     preview: m.bodyPreview ?? '',
     hasAttachments: m.hasAttachments ?? false,
+    isMeetingInvite: isInviteKind(m.meetingMessageType),
     flags: {
       read: m.isRead ?? false,
       flagged: m.flag?.flagStatus === 'flagged',
       draft: m.isDraft ?? false,
     },
     sizeBytes: 0,
+  }
+}
+
+/** Graph's meetingMessageType covers BOTH directions (attendee getting
+ * an invite vs organizer getting a response). The index marker only
+ * makes sense for the attendee side — invitations the user can act
+ * on. Cancellations also surface so the user notices the meeting went
+ * away. Organizer-side response messages don't get the marker. */
+function isInviteKind(t: GraphMeetingMessageType | undefined): boolean {
+  return t === 'meetingRequest' || t === 'meetingCancelled'
+}
+
+function toMeetingInfo(m: GraphFullMessage): MeetingInfo | undefined {
+  const t = m.meetingMessageType
+  if (!t || t === 'none' || !m.event) return undefined
+
+  const kind: MeetingKind =
+    t === 'meetingRequest'
+      ? 'request'
+      : t === 'meetingCancelled'
+        ? 'cancelled'
+        : t === 'meetingAccepted'
+          ? 'accepted'
+          : t === 'meetingTentativelyAccepted'
+            ? 'tentative'
+            : 'declined'
+
+  // Graph dateTimeTimeZone strings are 'YYYY-MM-DDTHH:MM:SS.fff' in
+  // the named zone (NOT ISO with Z). Date's parser accepts ISO without
+  // tz as local time, which is wrong; safest path is to ignore tz and
+  // assume UTC for display — close enough for v1 and the user can
+  // sanity-check against the organizer's local in the body.
+  const start = m.event.start?.dateTime
+    ? new Date(`${m.event.start.dateTime}Z`)
+    : new Date(0)
+  const end = m.event.end?.dateTime
+    ? new Date(`${m.event.end.dateTime}Z`)
+    : new Date(0)
+
+  const respMap: Record<NonNullable<GraphResponseStatus['response']>, MeetingResponse> = {
+    none: 'none',
+    organizer: 'organizer',
+    tentativelyAccepted: 'tentative',
+    accepted: 'accepted',
+    declined: 'declined',
+    notResponded: 'notResponded',
+  }
+  const myResponse: MeetingResponse =
+    respMap[m.event.responseStatus?.response ?? 'none'] ?? 'none'
+
+  return {
+    kind,
+    eventId: m.event.id,
+    start,
+    end,
+    isAllDay: m.event.isAllDay ?? false,
+    location: m.event.location?.displayName?.trim() || undefined,
+    organizer: toAddress(m.event.organizer),
+    myResponse,
   }
 }
 

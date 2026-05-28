@@ -6,6 +6,7 @@ import type {
   FolderId,
   ListOpts,
   MailEvent,
+  MeetingResponseKind,
   Message,
   MessageHeader,
   MessageId,
@@ -39,13 +40,20 @@ export interface CairnApi {
       folderId: FolderId,
       opts?: ListOpts,
     ): Promise<{ messages: MessageHeader[]; nextCursor?: string }>
-    getMessage(id: MessageId): Promise<Message>
+    getMessage(id: MessageId, opts?: { forceRefresh?: boolean }): Promise<Message>
     getAttachment(messageId: MessageId, attachmentId: string): Promise<Attachment>
     send(draft: Draft): Promise<void>
     saveDraft(draft: Draft): Promise<MessageId>
     move(id: MessageId, dest: FolderId): Promise<void>
     delete(id: MessageId, permanent?: boolean): Promise<void>
     setFlags(id: MessageId, flags: FlagUpdate): Promise<void>
+    /** Accept / Tentative / Decline a meeting invite. Always sends a
+     * response to the organizer (no comment editor yet). */
+    respondToInvite(
+      id: MessageId,
+      kind: MeetingResponseKind,
+      opts?: { comment?: string; sendResponse?: boolean },
+    ): Promise<void>
     search(query: SearchQuery): Promise<MessageHeader[]>
     /** Tells the main-process sync scheduler which folder the user is
      * currently looking at. The scheduler folds it into its periodic poll

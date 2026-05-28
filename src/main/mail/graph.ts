@@ -6,6 +6,7 @@ import type {
   FolderId,
   ListOpts,
   MailEvent,
+  MeetingResponseKind,
   Message,
   MessageHeader,
   MessageId,
@@ -97,9 +98,11 @@ export class GraphProvider implements MailProvider {
     return result
   }
 
-  async getMessage(id: MessageId): Promise<Message> {
-    const cached = this.cache.getMessageFull(id)
-    if (cached) return cached
+  async getMessage(id: MessageId, opts?: { forceRefresh?: boolean }): Promise<Message> {
+    if (!opts?.forceRefresh) {
+      const cached = this.cache.getMessageFull(id)
+      if (cached) return cached
+    }
 
     const { message, folderId } = await fetchFullMessage(this.getToken, id)
     if (folderId) {
@@ -198,6 +201,52 @@ export class GraphProvider implements MailProvider {
       `/me/messages/${encodeURIComponent(id)}`,
       { method: 'PATCH', body: patch },
     )
+  }
+
+  async respondToInvite(
+    id: MessageId,
+    kind: MeetingResponseKind,
+    opts?: { comment?: string; sendResponse?: boolean },
+  ): Promise<void> {
+    const endpoint =
+      kind === 'accept'
+        ? 'accept'
+        : kind === 'tentative'
+          ? 'tentativelyAccept'
+          : 'decline'
+    // accept/decline/tentativelyAccept route through /me/events/{id} —
+    // the message-level action segments aren't recognized by Graph's
+    // URL parser even with the eventMessage type cast. So we need the
+    // event id, which the cached MeetingInfo carries from the
+    // $expand=event fetch on getMessage.
+    const cached = this.cache.getMessageFull(id)
+    const eventId = cached?.meeting?.eventId
+    if (!eventId) {
+      throw new Error(
+        'respondToInvite: no cached event id (open the message once so it gets fetched, then retry)',
+      )
+    }
+    await graphRequest(
+      this.getToken,
+      `/me/events/${encodeURIComponent(eventId)}/${endpoint}`,
+      {
+        method: 'POST',
+        body: {
+          comment: opts?.comment ?? '',
+          sendResponse: opts?.sendResponse ?? true,
+        },
+      },
+    )
+    // Reflect the new RSVP in the cached MeetingInfo so the next view
+    // of the message shows it without a forced refetch. Graph doesn't
+    // hand us back an updated event resource from the response endpoint.
+    const cachedResponse =
+      kind === 'accept'
+        ? 'accepted'
+        : kind === 'tentative'
+          ? 'tentative'
+          : 'declined'
+    this.cache.setMeetingResponse(id, cachedResponse)
   }
 
   async *search(query: SearchQuery): AsyncIterable<MessageHeader> {

@@ -214,7 +214,10 @@ export class IndexScreen implements Screen {
 
       if (isActive) s.fill(row, 0, s.cols, ' ', attrs)
 
-      const readDot = m.flags.read ? ' ' : '*'
+      // 'I' marks meeting invites; takes precedence over the unread
+       // dot so the user can spot an actionable invite even after
+       // reading it. Falls back to '*' (unread) or blank.
+      const readDot = m.isMeetingInvite ? 'I' : m.flags.read ? ' ' : '*'
       const flagMark = m.flags.flagged ? '!' : ' '
       const date =
         m.receivedAt instanceof Date

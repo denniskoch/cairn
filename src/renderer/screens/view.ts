@@ -43,12 +43,12 @@ export class ViewScreen implements Screen {
     await this.loadMessage()
   }
 
-  private async loadMessage(): Promise<void> {
+  private async loadMessage(opts?: { forceRefresh?: boolean }): Promise<void> {
     this.loading = true
     this.error = null
     this.ctx?.invalidate()
     try {
-      this.message = await window.cairn.mail.getMessage(this.messageId)
+      this.message = await window.cairn.mail.getMessage(this.messageId, opts)
       this.bodyLines = (this.message.bodyText ?? '').split(/\r?\n/)
       // scrollLines is `bodyLines` until H is pressed; rebuild here so
       // initial render doesn't see a stale empty array.
@@ -137,6 +137,13 @@ export class ViewScreen implements Screen {
       row++
     }
 
+    // Meeting invite banner — sits between separator and body so the
+    // user sees the actionable bits up front. Render keys are bound in
+    // keymap() when m.meeting is non-null.
+    if (m.meeting && row < s.rows - 6 - STATUS_BAR_CHROME) {
+      row = this.renderInviteBlock(s, row, m.meeting)
+    }
+
     // Scrollable region: full headers (when toggled on) + body.
     // Reflow on resize — wrapped header lines depend on cols.
     if (s.cols !== this.wrapCols) this.rebuildScrollLines()
@@ -195,6 +202,92 @@ export class ViewScreen implements Screen {
     }
 
     return entries
+  }
+
+  /** Renders the 3- or 4-line meeting invite banner and returns the row
+   * after it. Layout (no border — line attributes do the work):
+   *   <kind label> from <organizer>            <your response>
+   *   <date>  <time range or "(all day)">
+   *   Location: <location>            (only if present)
+   *   Y Accept   T Tentative   N Decline      (only for actionable kinds)
+   */
+  private renderInviteBlock(
+    s: import('../surface').Surface,
+    startRow: number,
+    meeting: import('../../shared/mail').MeetingInfo,
+  ): number {
+    const ruleAttrs: Attrs = { fg: 'cyan' }
+    const labelAttrs: Attrs = { bold: true, fg: 'cyan' }
+    const titleAttrs: Attrs = { bold: true, fg: 'magenta' }
+    const keyAttrs: Attrs = { inverse: true, bold: true }
+
+    const kindLabel =
+      meeting.kind === 'request'
+        ? 'MEETING REQUEST'
+        : meeting.kind === 'cancelled'
+          ? 'MEETING CANCELLED'
+          : meeting.kind === 'accepted'
+            ? 'RESPONSE — ACCEPTED'
+            : meeting.kind === 'tentative'
+              ? 'RESPONSE — TENTATIVE'
+              : 'RESPONSE — DECLINED'
+
+    const orgName = meeting.organizer.name ?? meeting.organizer.email
+    const respState = meeting.myResponse.toUpperCase()
+    const respAttrs = statusAttrs(meeting.myResponse)
+    const respPrefix = 'Your response: '
+
+    let row = startRow
+
+    // Top rule with embedded label:  ── MEETING REQUEST from X ──────...
+    drawTitledRule(
+      s,
+      row,
+      ` ${kindLabel} from ${orgName} `,
+      titleAttrs,
+      ruleAttrs,
+    )
+    row++
+
+    // When / Where on indented label/value rows. cyan labels match
+    // the cyan labels used for the brief-header block above.
+    s.text(row, 4, 'When:', labelAttrs)
+    s.text(row, 12, formatWhen(meeting))
+    row++
+
+    if (meeting.location) {
+      s.text(row, 4, 'Where:', labelAttrs)
+      s.text(row, 12, meeting.location.slice(0, s.cols - 14))
+      row++
+    }
+
+    // Response status — bold + colored by state so the user can see
+    // "ACCEPTED" green / "DECLINED" red at a glance instead of the
+    // muted grey it used to be.
+    s.text(row, 4, respPrefix)
+    s.text(row, 4 + respPrefix.length, respState, respAttrs)
+    row++
+
+    // Action keys — only for kinds the user can still RSVP to.
+    if (meeting.kind === 'request') {
+      let col = 4
+      const draw = (key: string, label: string): void => {
+        s.cell(row, col, key, keyAttrs)
+        s.text(row, col + 2, label)
+        col += 2 + label.length + 4
+      }
+      // N is already bound to "next message" — use X for decline so
+      // pressing N on an invite doesn't surprise-RSVP no.
+      draw('Y', 'Accept')
+      draw('T', 'Tentative')
+      draw('X', 'Decline')
+      row++
+    }
+
+    // Bottom rule closes the block — frames the section so it reads
+    // as a callout rather than as more body text.
+    s.fill(row, 0, s.cols, '─', ruleAttrs)
+    return row + 1
   }
 
   /** Number of lines at the head of `scrollLines` that came from full
@@ -284,6 +377,19 @@ export class ViewScreen implements Screen {
   }
 
   keymap(): KeyMap {
+    const map: KeyMap = this.baseKeymap()
+    // Invite RSVP keys only when the current message is an actionable
+    // meeting request — keeps Y / T / X free for future use on regular
+    // mail and avoids accidental sends from non-invite messages.
+    if (this.message?.meeting?.kind === 'request') {
+      map.Y = () => void this.respondToInvite('accept')
+      map.T = () => void this.respondToInvite('tentative')
+      map.X = () => void this.respondToInvite('decline')
+    }
+    return map
+  }
+
+  private baseKeymap(): KeyMap {
     return {
       Q: () => {
         void this.ctx?.router.pop()
@@ -342,7 +448,7 @@ export class ViewScreen implements Screen {
       R: () => void this.openCompose('reply'),
       A: () => void this.openCompose('replyAll'),
       F: () => void this.openCompose('forward'),
-      L: () => void this.loadMessage(),
+      L: () => void this.loadMessage({ forceRefresh: true }),
       V: () => {
         if (!this.ctx || !this.message) return
         void this.ctx.router.push(
@@ -368,6 +474,19 @@ export class ViewScreen implements Screen {
           console.warn('delete failed:', err)
         }
       },
+    }
+  }
+
+  private async respondToInvite(
+    kind: import('../../shared/mail').MeetingResponseKind,
+  ): Promise<void> {
+    if (!this.message || !this.ctx) return
+    try {
+      await window.cairn.mail.respondToInvite(this.message.id, kind)
+      // Re-fetch so the banner's "your response" reflects the new state.
+      await this.loadMessage()
+    } catch (err) {
+      console.warn('respondToInvite failed:', err)
     }
   }
 
@@ -400,6 +519,7 @@ export class ViewScreen implements Screen {
         { key: 'H', description: 'Toggle brief / full headers' },
         { key: 'V', description: 'View attachments (pick + save to disk)' },
         { key: 'L', description: 'Reload / retry on error' },
+        { key: 'Y / T / X', description: 'On a meeting invite: Accept / Tentative / Decline' },
         { key: 'Q', description: 'Back to message index' },
         { key: '?', description: 'Show this help' },
       ],
@@ -409,6 +529,68 @@ export class ViewScreen implements Screen {
 
 function addrLabel(a: { email: string; name?: string }): string {
   return a.name ? `${a.name} <${a.email}>` : a.email
+}
+
+/** Color/weight for a meeting response state. Green/red/yellow match
+ * the universal traffic-light convention; un-responded gets bright
+ * yellow so it pulls attention until the user acts. */
+function statusAttrs(
+  response: import('../../shared/mail').MeetingResponse,
+): Attrs {
+  switch (response) {
+    case 'accepted':
+      return { bold: true, fg: 'green' }
+    case 'tentative':
+      return { bold: true, fg: 'yellow' }
+    case 'declined':
+      return { bold: true, fg: 'red' }
+    case 'organizer':
+      return { bold: true, fg: 'cyan' }
+    case 'none':
+    case 'notResponded':
+    default:
+      return { bold: true, fg: 'brightYellow' }
+  }
+}
+
+/** Draw a horizontal rule with an embedded title segment, like:
+ *   ── TITLE TEXT ────────────────────────────────────────...
+ * The title sits two columns in from the left; the rule fills the
+ * rest of the row. Used to bracket call-out blocks (invite banner). */
+function drawTitledRule(
+  s: import('../surface').Surface,
+  row: number,
+  title: string,
+  titleAttrs: Attrs,
+  ruleAttrs: Attrs,
+): void {
+  s.fill(row, 0, s.cols, '─', ruleAttrs)
+  const labelStart = 2
+  if (labelStart + title.length < s.cols) {
+    s.text(row, labelStart, title, titleAttrs)
+  }
+}
+
+/** Format a meeting's date/time for the invite banner. Local-time
+ * formatting matches what the user sees in Outlook/web. */
+function formatWhen(
+  meeting: { start: Date; end: Date; isAllDay: boolean },
+): string {
+  const dateOpts: Intl.DateTimeFormatOptions = {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  }
+  const timeOpts: Intl.DateTimeFormatOptions = {
+    hour: '2-digit',
+    minute: '2-digit',
+  }
+  const date = meeting.start.toLocaleDateString(undefined, dateOpts)
+  if (meeting.isAllDay) return `${date}  (all day)`
+  const start = meeting.start.toLocaleTimeString(undefined, timeOpts)
+  const end = meeting.end.toLocaleTimeString(undefined, timeOpts)
+  return `${date}  ${start} – ${end}`
 }
 
 /**

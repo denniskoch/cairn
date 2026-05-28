@@ -27,7 +27,7 @@ const api: CairnApi = {
     listFolders: () => ipcRenderer.invoke('cairn:mail:listFolders'),
     listMessages: (folderId, opts) =>
       ipcRenderer.invoke('cairn:mail:listMessages', folderId, opts),
-    getMessage: (id) => ipcRenderer.invoke('cairn:mail:getMessage', id),
+    getMessage: (id, opts) => ipcRenderer.invoke('cairn:mail:getMessage', id, opts),
     getAttachment: (messageId, attachmentId) =>
       ipcRenderer.invoke('cairn:mail:getAttachment', messageId, attachmentId),
     send: (draft) => ipcRenderer.invoke('cairn:mail:send', draft),
@@ -37,6 +37,8 @@ const api: CairnApi = {
       ipcRenderer.invoke('cairn:mail:delete', id, permanent),
     setFlags: (id, flags) =>
       ipcRenderer.invoke('cairn:mail:setFlags', id, flags),
+    respondToInvite: (id, kind, opts) =>
+      ipcRenderer.invoke('cairn:mail:respondToInvite', id, kind, opts),
     search: (query) => ipcRenderer.invoke('cairn:mail:search', query),
     setCurrentFolder: (folderId) =>
       ipcRenderer.invoke('cairn:mail:setCurrentFolder', folderId),

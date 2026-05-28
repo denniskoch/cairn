@@ -3,6 +3,7 @@ import type {
   Address,
   AttachmentMeta,
   Folder,
+  MeetingInfo,
   Message,
   MessageHeader,
 } from '../../shared/mail'
@@ -39,6 +40,8 @@ type MessageRow = {
   body_html: string | null
   raw_headers: string | null
   attachments: string | null
+  is_meeting: number
+  meeting_info: string | null
   fetched_at: number | null
 }
 
@@ -156,8 +159,8 @@ export class MailCache {
            account_id, id, folder_id, provider_id, thread_id,
            from_addr, to_addrs, cc_addrs, subject, received_at,
            preview, has_attachments, is_read, is_flagged, is_draft,
-           size_bytes, fetched_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           size_bytes, is_meeting, fetched_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(account_id, id) DO UPDATE SET
            folder_id = excluded.folder_id,
            thread_id = excluded.thread_id,
@@ -172,6 +175,7 @@ export class MailCache {
            is_flagged = excluded.is_flagged,
            is_draft = excluded.is_draft,
            size_bytes = excluded.size_bytes,
+           is_meeting = excluded.is_meeting,
            fetched_at = excluded.fetched_at`,
       )
       .run(
@@ -191,6 +195,7 @@ export class MailCache {
         m.flags.flagged ? 1 : 0,
         m.flags.draft ? 1 : 0,
         m.sizeBytes,
+        m.isMeetingInvite ? 1 : 0,
         Date.now(),
       )
   }
@@ -199,7 +204,9 @@ export class MailCache {
     this.upsertMessageHeader(folderId, m)
     this.db
       .prepare(
-        `UPDATE messages SET body_text = ?, body_html = ?, raw_headers = ?, attachments = ?
+        `UPDATE messages
+           SET body_text = ?, body_html = ?, raw_headers = ?,
+               attachments = ?, meeting_info = ?
          WHERE account_id = ? AND id = ?`,
       )
       .run(
@@ -207,9 +214,35 @@ export class MailCache {
         m.bodyHtml ?? null,
         JSON.stringify(m.headers),
         m.attachments.length > 0 ? JSON.stringify(m.attachments) : null,
+        m.meeting ? JSON.stringify(m.meeting) : null,
         this.accountId,
         m.id,
       )
+  }
+
+  /** Patch the cached MeetingInfo.myResponse field for a single message
+   * — used after the renderer fires a Yes/Tentative/No so the next
+   * view of the message shows the updated state without forcing a
+   * full re-fetch from Graph. No-op if there's no cached meeting_info
+   * (then the next full fetch will populate it correctly anyway). */
+  setMeetingResponse(id: string, response: MeetingInfo['myResponse']): void {
+    const row = this.db
+      .prepare(
+        `SELECT meeting_info FROM messages WHERE account_id = ? AND id = ?`,
+      )
+      .get(this.accountId, id) as { meeting_info: string | null } | undefined
+    if (!row?.meeting_info) return
+    try {
+      const parsed = JSON.parse(row.meeting_info) as MeetingInfo
+      parsed.myResponse = response
+      this.db
+        .prepare(
+          `UPDATE messages SET meeting_info = ? WHERE account_id = ? AND id = ?`,
+        )
+        .run(JSON.stringify(parsed), this.accountId, id)
+    } catch (err) {
+      console.warn('cache: failed to patch meeting_info:', err)
+    }
   }
 
   deleteMessage(id: string): void {
@@ -309,12 +342,28 @@ export class MailCache {
       .get(this.accountId, id) as MessageRow | undefined
     if (!row || row.body_text === null) return null
 
+    const meeting = row.meeting_info
+      ? (() => {
+          // Dates round-tripped through JSON come back as strings;
+          // rehydrate so the renderer can format them without a cast.
+          const raw = JSON.parse(row.meeting_info) as MeetingInfo & {
+            start: string | Date
+            end: string | Date
+          }
+          return {
+            ...raw,
+            start: new Date(raw.start),
+            end: new Date(raw.end),
+          } as MeetingInfo
+        })()
+      : undefined
     return {
       ...rowToMessageHeader(row),
       bodyText: row.body_text,
       bodyHtml: row.body_html ?? undefined,
       attachments: row.attachments ? (JSON.parse(row.attachments) as AttachmentMeta[]) : [],
       headers: row.raw_headers ? JSON.parse(row.raw_headers) : {},
+      ...(meeting ? { meeting } : {}),
     }
   }
 }
@@ -340,6 +389,7 @@ function rowToMessageHeader(row: MessageRow): MessageHeader {
     receivedAt: new Date(row.received_at),
     preview: row.preview ?? '',
     hasAttachments: row.has_attachments !== 0,
+    isMeetingInvite: row.is_meeting !== 0,
     flags: {
       read: row.is_read !== 0,
       flagged: row.is_flagged !== 0,
