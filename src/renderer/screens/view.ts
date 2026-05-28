@@ -21,7 +21,17 @@ export class ViewScreen implements Screen {
   private error: string | null = null
   private scrollOffset = 0
   private fullHeaders = false
+  /** Raw body, one entry per line, before any header content is prepended. */
   private bodyLines: string[] = []
+  /** What the scrollable region renders. With brief headers (default) this
+   * is just `bodyLines`. With full headers (H), this is the extra headers
+   * (wrapped) + a blank separator + bodyLines. Recomputed in
+   * `rebuildScrollLines` whenever the message changes, H is toggled, or
+   * the surface resizes. */
+  private scrollLines: string[] = []
+  /** Last viewport width we wrapped against — used to invalidate
+   * scrollLines on resize so wrapped headers reflow. */
+  private wrapCols = 0
 
   constructor(
     private readonly messageId: string,
@@ -40,6 +50,9 @@ export class ViewScreen implements Screen {
     try {
       this.message = await window.cairn.mail.getMessage(this.messageId)
       this.bodyLines = (this.message.bodyText ?? '').split(/\r?\n/)
+      // scrollLines is `bodyLines` until H is pressed; rebuild here so
+      // initial render doesn't see a stale empty array.
+      this.rebuildScrollLines()
       // Mark read on view — optimistic + best-effort. Same pattern as
       // IndexScreen.U; failure is logged, not surfaced.
       if (!this.message.flags.read) {
@@ -104,37 +117,52 @@ export class ViewScreen implements Screen {
     s.text(0, s.cols - counter.length - 4, counter, { inverse: true })
     drawSyncIndicator(s)
 
-    // Header block
+    // Brief headers — always pinned at the top, never scrolled. These
+    // are short (Date/From/To/Cc/Subject/Attach) and fit cleanly in the
+    // fixed 10-col label / 12-col value layout. Full headers, when H
+    // toggles them on, live in the scrollable region below.
     let row = 2
-    const headerEntries = this.collectHeaderEntries(m)
+    const briefEntries = this.briefHeaderEntries(m)
     const labelAttrs: Attrs = { bold: true, fg: 'cyan' }
-    for (const [label, value] of headerEntries) {
+    for (const [label, value] of briefEntries) {
       if (row >= s.rows - 3 - STATUS_BAR_CHROME) break
       s.text(row, 2, `${label}:`.padEnd(10), labelAttrs)
       s.text(row, 12, value.slice(0, s.cols - 13))
       row++
     }
 
-    // Separator
+    // Separator between pinned brief headers and the scrollable region.
     if (row < s.rows - 3 - STATUS_BAR_CHROME) {
       s.fill(row, 0, s.cols, '─', { fg: 'brightBlack' })
       row++
     }
 
-    // Body
-    const bodyStartRow = row
-    const bodyVisibleRows = Math.max(0, s.rows - bodyStartRow - 2 - STATUS_BAR_CHROME)
-    for (let i = 0; i < bodyVisibleRows; i++) {
+    // Scrollable region: full headers (when toggled on) + body.
+    // Reflow on resize — wrapped header lines depend on cols.
+    if (s.cols !== this.wrapCols) this.rebuildScrollLines()
+    const scrollStartRow = row
+    const visibleRows = Math.max(
+      0,
+      s.rows - scrollStartRow - 2 - STATUS_BAR_CHROME,
+    )
+    for (let i = 0; i < visibleRows; i++) {
       const lineIdx = this.scrollOffset + i
-      if (lineIdx >= this.bodyLines.length) break
-      const line = this.bodyLines[lineIdx]
-      s.text(bodyStartRow + i, 2, line.slice(0, s.cols - 4))
+      if (lineIdx >= this.scrollLines.length) break
+      const line = this.scrollLines[lineIdx]
+      // Header lines (when fullHeaders is on) are coloured to stand
+      // apart from body. We detect them by checking against the
+      // count we know is at the head of scrollLines.
+      const isHeaderLine = this.fullHeaders && lineIdx < this.fullHeaderLineCount
+      const attrs: Attrs | undefined = isHeaderLine ? { fg: 'cyan' } : undefined
+      s.text(scrollStartRow + i, 2, line.slice(0, s.cols - 4), attrs)
     }
 
-    // Scroll indicator on far right
-    if (this.bodyLines.length > bodyVisibleRows) {
-      const ratio = this.scrollOffset / (this.bodyLines.length - bodyVisibleRows)
-      const indicatorRow = bodyStartRow + Math.round(ratio * (bodyVisibleRows - 1))
+    // Scroll indicator on the right gutter.
+    if (this.scrollLines.length > visibleRows && visibleRows > 0) {
+      const ratio =
+        this.scrollOffset / Math.max(1, this.scrollLines.length - visibleRows)
+      const indicatorRow =
+        scrollStartRow + Math.round(ratio * (visibleRows - 1))
       s.cell(indicatorRow, s.cols - 1, '│', { fg: 'brightBlack', inverse: true })
     }
 
@@ -142,7 +170,10 @@ export class ViewScreen implements Screen {
     s.flush()
   }
 
-  private collectHeaderEntries(m: Message): [string, string][] {
+  /** The always-shown header block. These labels all fit comfortably in
+   * the fixed 10-column label area; full SMTP headers go through the
+   * scrollable region instead. */
+  private briefHeaderEntries(m: Message): [string, string][] {
     const entries: [string, string][] = []
     const date = m.receivedAt instanceof Date ? m.receivedAt.toString() : ''
     const from = m.from.name ? `${m.from.name} <${m.from.email}>` : m.from.email
@@ -163,14 +194,42 @@ export class ViewScreen implements Screen {
       ])
     }
 
-    if (this.fullHeaders) {
-      for (const [k, v] of Object.entries(m.headers)) {
-        if (BRIEF_HEADERS.includes(k)) continue
-        entries.push([k, v])
-      }
+    return entries
+  }
+
+  /** Number of lines at the head of `scrollLines` that came from full
+   * headers (so they can be rendered with header attrs). Recomputed by
+   * rebuildScrollLines. */
+  private fullHeaderLineCount = 0
+
+  /** Rebuild `scrollLines` from the current message + `fullHeaders` +
+   * surface cols. With full headers off, scrollLines is just bodyLines.
+   * With full headers on, scrollLines is the wrapped extra-header lines
+   * followed by a blank line and then bodyLines. */
+  private rebuildScrollLines(): void {
+    const cols = this.ctx?.surface.cols ?? 80
+    const wrapWidth = Math.max(20, cols - 4) // 2 left indent + 2 right margin
+    this.wrapCols = cols
+
+    if (!this.message) {
+      this.scrollLines = []
+      this.fullHeaderLineCount = 0
+      return
     }
 
-    return entries
+    const lines: string[] = []
+    if (this.fullHeaders) {
+      for (const [k, v] of Object.entries(this.message.headers)) {
+        if (BRIEF_HEADERS.includes(k)) continue
+        lines.push(...wrapHeaderLine(k, v, wrapWidth))
+      }
+      // Blank line between header block and body, only if we wrote any
+      // headers (defensive — Sent items can have an empty headers map).
+      if (lines.length > 0) lines.push('')
+    }
+    this.fullHeaderLineCount = lines.length
+    lines.push(...this.bodyLines)
+    this.scrollLines = lines
   }
 
   private renderStatusBar(
@@ -198,27 +257,30 @@ export class ViewScreen implements Screen {
 
   private pageDown(): void {
     if (!this.ctx || !this.message) return
-    const s = this.ctx.surface
-    const bodyVisibleRows = Math.max(1, s.rows - this.bodyStartRow() - 2 - STATUS_BAR_CHROME)
-    const max = Math.max(0, this.bodyLines.length - bodyVisibleRows)
-    this.scrollOffset = Math.min(max, this.scrollOffset + bodyVisibleRows - 1)
+    const visible = this.visibleScrollRows()
+    const max = Math.max(0, this.scrollLines.length - visible)
+    this.scrollOffset = Math.min(max, this.scrollOffset + visible - 1)
     this.ctx.invalidate()
   }
 
   private pageUp(): void {
     if (!this.ctx || !this.message) return
-    const s = this.ctx.surface
-    const bodyVisibleRows = Math.max(1, s.rows - this.bodyStartRow() - 2 - STATUS_BAR_CHROME)
-    this.scrollOffset = Math.max(0, this.scrollOffset - (bodyVisibleRows - 1))
+    const visible = this.visibleScrollRows()
+    this.scrollOffset = Math.max(0, this.scrollOffset - (visible - 1))
     this.ctx.invalidate()
   }
 
-  private bodyStartRow(): number {
-    // Approximate: header bar (1) + blank (1) + brief headers
-    // (~5) + separator (1) = 8 rows of chrome. Recomputed at render time
-    // for accuracy; this is just for paging math.
-    const headerCount = this.collectHeaderEntries(this.message!).length
-    return 2 + headerCount + 1
+  /** Number of rows in the scrollable region under the pinned brief
+   * headers. Recomputed at each call so it's correct after a resize.
+   * The 2 in the subtraction is the blank breathing row + status-bar
+   * top edge that the surface reserves above the keymenu. */
+  private visibleScrollRows(): number {
+    if (!this.ctx || !this.message) return 0
+    const s = this.ctx.surface
+    const briefCount = this.briefHeaderEntries(this.message).length
+    // header bar (row 0) + blank (row 1) + brief headers + separator
+    const scrollStart = 2 + briefCount + 1
+    return Math.max(1, s.rows - scrollStart - 2 - STATUS_BAR_CHROME)
   }
 
   keymap(): KeyMap {
@@ -232,9 +294,8 @@ export class ViewScreen implements Screen {
       PageUp: () => this.pageUp(),
       Down: () => {
         if (!this.ctx) return
-        const s = this.ctx.surface
-        const bodyVisibleRows = Math.max(1, s.rows - this.bodyStartRow() - 2 - STATUS_BAR_CHROME)
-        const max = Math.max(0, this.bodyLines.length - bodyVisibleRows)
+        const visible = this.visibleScrollRows()
+        const max = Math.max(0, this.scrollLines.length - visible)
         if (this.scrollOffset < max) {
           this.scrollOffset++
           this.ctx.invalidate()
@@ -248,6 +309,12 @@ export class ViewScreen implements Screen {
       },
       H: () => {
         this.fullHeaders = !this.fullHeaders
+        this.rebuildScrollLines()
+        // Reset to the top of the scrollable region when toggling — if
+        // the user just hit H, they want to see the headers, not stay
+        // mid-body. Toggling off also resets so they don't get stranded
+        // past the end of the now-shorter scrollLines.
+        this.scrollOffset = 0
         this.ctx?.invalidate()
       },
       N: () => {
@@ -342,4 +409,33 @@ export class ViewScreen implements Screen {
 
 function addrLabel(a: { email: string; name?: string }): string {
   return a.name ? `${a.name} <${a.email}>` : a.email
+}
+
+/**
+ * Render one header as a sequence of display lines, wrapped at `cols`.
+ *
+ * Strategy:
+ * - If `Name: value` fits on a single line, emit just that.
+ * - Otherwise, emit the bare `Name:` on its own line and wrap the value
+ *   onto subsequent lines with a 4-space continuation indent.
+ *
+ * The second branch handles two cases at once: long values (a normal
+ * `Authentication-Results:` can run to hundreds of chars) and absurd
+ * header names like `X-MS-Exchange-Organization-MessageDirectionality:`
+ * which leave no room for a value on the same line in a 80-col grid.
+ * Putting the name alone on its own line keeps every wrapped value line
+ * starting at the same column, which the eye reads more cleanly than
+ * RFC822-style "indent under the name start" wrapping.
+ */
+function wrapHeaderLine(name: string, value: string, cols: number): string[] {
+  const oneLine = `${name}: ${value}`
+  if (oneLine.length <= cols) return [oneLine]
+
+  const lines: string[] = [`${name}:`]
+  const indent = '    '
+  const width = Math.max(1, cols - indent.length)
+  for (let i = 0; i < value.length; i += width) {
+    lines.push(indent + value.slice(i, i + width))
+  }
+  return lines
 }
