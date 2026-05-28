@@ -12,6 +12,18 @@ export const authConfig = {
     'Mail.ReadWrite',
     'Mail.Send',
     'MailboxSettings.Read',
+    // Read meeting invites + Accept / Tentative / Decline.
+    'Calendars.ReadWrite',
+    // Personal Address Book (read + add/edit).
+    'Contacts.ReadWrite',
+    // Microsoft's auto-curated "people you actually email" list for
+    // autocomplete suggestions. User-consentable.
+    'People.Read',
+    // Org-wide GAL search via /users. ADMIN CONSENT REQUIRED in most
+    // tenants — the first user in a tenant without prior consent will
+    // see the consent prompt block on this one. Keep it last so the
+    // others still apply if an admin only partial-consents.
+    'User.ReadBasic.All',
     'offline_access',
     'User.Read',
   ],
