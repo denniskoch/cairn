@@ -380,17 +380,32 @@ export class ComposeScreen implements Screen {
   }
 
   private newline(): void {
-    if (this.active !== 'body') {
-      this.cycleField(1)
+    if (this.active === 'body') {
+      const line = this.bodyLines[this.bodyRow]
+      const before = line.slice(0, this.bodyCol)
+      const after = line.slice(this.bodyCol)
+      this.bodyLines[this.bodyRow] = before
+      this.bodyLines.splice(this.bodyRow + 1, 0, after)
+      this.bodyRow++
+      this.bodyCol = 0
       return
     }
-    const line = this.bodyLines[this.bodyRow]
-    const before = line.slice(0, this.bodyCol)
-    const after = line.slice(this.bodyCol)
-    this.bodyLines[this.bodyRow] = before
-    this.bodyLines.splice(this.bodyRow + 1, 0, after)
-    this.bodyRow++
-    this.bodyCol = 0
+    if (this.isAddressField()) {
+      // Alpine-style implicit comma: Enter in a recipient field starts
+      // a new visual row that's joined to the previous content with
+      // ', ' on send. We insert a literal '\n' here — wrapAddressValue
+      // treats it as a forced break, and normalizeAddressForSend
+      // replaces it with ', ' (only adding the comma if the preceding
+      // segment doesn't already end with one) before parseAddressField
+      // sees the value.
+      const { value, col } = this.getActiveHeader()
+      const newValue = value.slice(0, col) + '\n' + value.slice(col)
+      this.setActiveHeader(newValue, col + 1)
+      return
+    }
+    // From and Subject don't wrap and don't accept multi-line input —
+    // Enter cycles to the next field, matching the previous behavior.
+    this.cycleField(1)
   }
 
   private moveLeft(): void {
@@ -424,14 +439,47 @@ export class ComposeScreen implements Screen {
     if (this.active === 'body' && this.bodyRow > 0) {
       this.bodyRow--
       this.bodyCol = Math.min(this.bodyCol, this.bodyLines[this.bodyRow].length)
+      return
     }
+    if (this.isAddressField()) this.moveWithinWrappedField(-1)
   }
 
   private moveDown(): void {
     if (this.active === 'body' && this.bodyRow < this.bodyLines.length - 1) {
       this.bodyRow++
       this.bodyCol = Math.min(this.bodyCol, this.bodyLines[this.bodyRow].length)
+      return
     }
+    if (this.isAddressField()) this.moveWithinWrappedField(1)
+  }
+
+  /** Up/Down arrow inside a wrapped address field: move the cursor to
+   * the same display column on the previous / next wrap row, falling
+   * back to the closest column when the target row is shorter. No-op
+   * at the field's top / bottom edge (Tab is the field-cycle key). */
+  private moveWithinWrappedField(delta: -1 | 1): void {
+    const layout = this.headerLayouts[this.active]
+    if (!layout.wrap || layout.wrap.lines.length <= 1) return
+    const { value, col } = this.getActiveHeader()
+    const cur = layout.wrap.mapping[Math.min(col, layout.wrap.mapping.length - 1)]
+    const targetLine = cur.line + delta
+    if (targetLine < 0 || targetLine >= layout.wrap.lines.length) return
+
+    // Pick the logical position on targetLine whose display column is
+    // closest to cur.col. On a tie, the smaller logical position wins
+    // (leftmost cursor placement is the conventional editor choice).
+    let bestLogical = -1
+    let bestDistance = Infinity
+    for (let i = 0; i < layout.wrap.mapping.length; i++) {
+      const m = layout.wrap.mapping[i]
+      if (m.line !== targetLine) continue
+      const d = Math.abs(m.col - cur.col)
+      if (d < bestDistance) {
+        bestDistance = d
+        bestLogical = i
+      }
+    }
+    if (bestLogical >= 0) this.setActiveHeader(value, bestLogical)
   }
 
   private moveHome(): void {
@@ -464,9 +512,14 @@ export class ComposeScreen implements Screen {
   }
 
   private buildDraft(): Draft | null {
-    const to = parseAddressField(this.to)
-    const cc = parseAddressField(this.cc)
-    const bcc = parseAddressField(this.bcc)
+    // Normalize Alpine-style implicit-comma line breaks before parsing.
+    // Each `\n` (inserted by Enter in an address field) becomes `, `
+    // unless the preceding content already ends with a separator, in
+    // which case we drop the `\n` and ensure a trailing space — same
+    // rule pico/composer.c applies when saving a multi-line header.
+    const to = parseAddressField(normalizeAddressForSend(this.to))
+    const cc = parseAddressField(normalizeAddressForSend(this.cc))
+    const bcc = parseAddressField(normalizeAddressForSend(this.bcc))
 
     if (to.emails.length === 0) {
       this.setStatus('At least one recipient required.', true)
@@ -904,6 +957,17 @@ function wrapAddressValue(value: string, width: number): WrappedField {
     // wrap before drawing it).
     mapping.push({ line: lines.length, col: curLine.length })
 
+    if (value[i] === '\n') {
+      // Forced break — Enter-in-header inserts \n. The character
+      // itself doesn't render; it flushes the current line and the
+      // next char starts a new line at col 0. buildDraft normalizes
+      // \n to ', ' before sending, so Alpine's "implicit comma at
+      // line break" behavior is preserved on the wire.
+      lines.push(curLine)
+      curLine = ''
+      continue
+    }
+
     if (curLine.length >= width) {
       // Need to wrap. Look back on the current line for the last
       // separator (`,` or `;`, with or without a trailing space). If
@@ -955,6 +1019,47 @@ function wrapAddressValue(value: string, width: number): WrappedField {
 // Address parsing lives in src/renderer/util/addresses.ts (uses the
 // email-addresses npm package — full RFC 5322 + RFC 6532 compliance).
 // buildDraft above calls parseAddressField() for each header.
+
+/**
+ * Replace `\n` markers (forced row breaks inserted by Enter in an
+ * address field) with `, ` before parseAddressField sees the value.
+ *
+ * Modeled on pico/composer.c:3711-3716 — when Alpine saves a multi-line
+ * header, it inserts an implicit comma between rows that don't already
+ * end with one. We do the same: if the segment before `\n` already
+ * ends with `,` or `;`, drop the `\n` and ensure a trailing space;
+ * otherwise insert `, `. Leading-whitespace on the next segment is
+ * normalized to a single space so the parser sees clean `a, b, c`
+ * input regardless of how the user laid out the visual rows.
+ */
+function normalizeAddressForSend(value: string): string {
+  if (!value.includes('\n')) return value
+  let out = ''
+  let i = 0
+  while (i < value.length) {
+    const ch = value[i]
+    if (ch !== '\n') {
+      out += ch
+      i++
+      continue
+    }
+    // Skip any leading whitespace on the next "row" — we'll add our own
+    // single space after the separator below.
+    let j = i + 1
+    while (j < value.length && (value[j] === ' ' || value[j] === '\t')) {
+      j++
+    }
+    const lastChar = out.replace(/\s+$/, '').slice(-1)
+    if (lastChar === ',' || lastChar === ';') {
+      // Already separated — just normalize whitespace to a single space.
+      if (!out.endsWith(' ')) out += ' '
+    } else {
+      out += ', '
+    }
+    i = j
+  }
+  return out
+}
 
 function readOnlyFrom(): string {
   // Filled in once we have the signed-in address available. For step 14
