@@ -52,6 +52,15 @@ export class ComposeScreen implements Screen {
     () => this.currentLookupPrefix(),
   )
 
+  /** Where the header rows ended up on the most recent render. Address
+   * fields can wrap when the recipient list overflows the row width, so
+   * a field that was on row 2 last frame might span rows 2-4 this
+   * frame. placeCursor / autocomplete-dropdown anchor read this. */
+  private headerLayouts: Record<Field, FieldLayout> = emptyLayouts()
+  /** Row where the body region starts. After header wrap this is no
+   * longer the fixed `6` it used to be. */
+  private bodyStartRow = 6
+
   private ctx: ScreenContext | null = null
   private unsubscribeText: (() => void) | null = null
 
@@ -522,18 +531,44 @@ export class ComposeScreen implements Screen {
     const s = this.ctx.surface
     s.clear()
 
-    // Headers (rows 0..4)
-    this.drawHeaderRow(s, 0, 'From', readOnlyFrom())
-    this.drawHeaderRow(s, 1, 'To', this.to)
-    this.drawHeaderRow(s, 2, 'Cc', this.cc)
-    this.drawHeaderRow(s, 3, 'Bcc', this.bcc)
-    this.drawHeaderRow(s, 4, 'Subject', this.subject)
+    // Headers: From and Subject are single-value (truncate on overflow),
+    // To / Cc / Bcc wrap to continuation rows when the recipient list
+    // is too long for one line. After wrapping, header row positions
+    // are dynamic — we track each field's actual startRow in
+    // this.headerLayouts so placeCursor and the autocomplete dropdown
+    // know where to land.
+    const valueWidth = s.cols - HEADER_LABEL_WIDTH
+    let row = 0
+    // From is read-only — no entry in headerLayouts, no cursor lands here.
+    this.drawHeaderRow(s, row, 'From', readOnlyFrom())
+    row += 1
 
-    // Separator
-    s.fill(5, 0, s.cols, '─', { fg: 'brightBlack' })
+    const toWrap = wrapAddressValue(this.to, valueWidth)
+    this.headerLayouts.to = { startRow: row, wrap: toWrap }
+    this.drawWrappedAddressField(s, row, 'To', this.to, toWrap, this.active === 'to')
+    row += toWrap.lines.length
+
+    const ccWrap = wrapAddressValue(this.cc, valueWidth)
+    this.headerLayouts.cc = { startRow: row, wrap: ccWrap }
+    this.drawWrappedAddressField(s, row, 'Cc', this.cc, ccWrap, this.active === 'cc')
+    row += ccWrap.lines.length
+
+    const bccWrap = wrapAddressValue(this.bcc, valueWidth)
+    this.headerLayouts.bcc = { startRow: row, wrap: bccWrap }
+    this.drawWrappedAddressField(s, row, 'Bcc', this.bcc, bccWrap, this.active === 'bcc')
+    row += bccWrap.lines.length
+
+    this.headerLayouts.subject = { startRow: row, wrap: null }
+    this.drawHeaderRow(s, row, 'Subject', this.subject)
+    row += 1
+
+    // Separator below the last header row
+    s.fill(row, 0, s.cols, '─', { fg: 'brightBlack' })
+    row += 1
 
     // Body
-    const bodyStartRow = 6
+    const bodyStartRow = row
+    this.bodyStartRow = bodyStartRow
     const statusBarRows = 2
     const statusMsgRows = this.statusMessage ? 1 : 0
     const bodyVisibleRows = Math.max(
@@ -605,64 +640,98 @@ export class ComposeScreen implements Screen {
     s.flush()
   }
 
+  /** Single-row header (From / Subject). Truncates the value at the
+   * row's right edge — these fields don't wrap because they're not
+   * comma-separated lists. */
   private drawHeaderRow(s: Surface, row: number, label: string, value: string): void {
-    const isActive = this.active === fieldForRow(row)
+    const field = label.toLowerCase() as Field
+    const isActive = this.active === field
     const labelAttrs: Attrs = isActive
       ? { ...LABEL_ATTRS, inverse: true }
       : LABEL_ATTRS
     s.text(row, 0, (label + ':').padEnd(HEADER_LABEL_WIDTH), labelAttrs)
-
-    // Address rows (To / Cc / Bcc): split on commas/semicolons so
-    // already-committed addresses render bold (chip-like) and the
-    // actively-typed segment renders plain. Other rows draw straight
-    // text.
-    if (label === 'To' || label === 'Cc' || label === 'Bcc') {
-      this.drawAddressLine(s, row, HEADER_LABEL_WIDTH, value)
-    } else {
-      s.text(row, HEADER_LABEL_WIDTH, value.slice(0, s.cols - HEADER_LABEL_WIDTH))
-    }
+    s.text(row, HEADER_LABEL_WIDTH, value.slice(0, s.cols - HEADER_LABEL_WIDTH))
   }
 
-  /** Render an address-list value with committed segments bolded and
-   * the trailing in-progress segment in normal weight. Cheap visual
-   * "chip" effect without inventing new surface primitives. The split
-   * is on , or ; — same separators commitAddressSeparator inserts. */
-  private drawAddressLine(s: Surface, row: number, startCol: number, value: string): void {
-    // Committed address chips — bold to distinguish from the
-    // actively-typed segment that follows the last separator.
-    const chipAttrs: Attrs = { bold: true }
-    const maxLen = s.cols - startCol
-    const truncated = value.slice(0, maxLen)
+  /** Render an address-list field with wrapping. The label sits in the
+   * top-left corner; continuation rows leave the label column blank so
+   * the value column visually aligns. Committed segments (everything
+   * up through the last `, ` or `; ` in the original value) render in
+   * bold; the in-progress tail renders plain. */
+  private drawWrappedAddressField(
+    s: Surface,
+    startRow: number,
+    label: string,
+    value: string,
+    wrap: WrappedField,
+    isActive: boolean,
+  ): void {
+    const labelAttrs: Attrs = isActive
+      ? { ...LABEL_ATTRS, inverse: true }
+      : LABEL_ATTRS
+    s.text(startRow, 0, (label + ':').padEnd(HEADER_LABEL_WIDTH), labelAttrs)
+    // Continuation rows: the label column stays blank (already cleared
+    // by s.clear() at top of render), so the indent is implicit.
 
-    // Find the boundary between "committed" (everything up through the
-    // last separator + space) and the in-progress tail.
-    const lastSep = Math.max(
-      truncated.lastIndexOf(','),
-      truncated.lastIndexOf(';'),
-    )
-    if (lastSep < 0) {
-      // No commits yet — entire value is in progress.
-      s.text(row, startCol, truncated)
-      return
+    // Boundary between committed (bold) and in-progress (plain) text
+    // in the ORIGINAL value. We project that boundary through the wrap
+    // mapping to (line, col) so each rendered row knows which half of
+    // its slice to bold.
+    const lastSep = Math.max(value.lastIndexOf(', '), value.lastIndexOf('; '))
+    const boundaryLogical = lastSep >= 0 ? lastSep + 2 : 0
+    const boundary =
+      boundaryLogical < wrap.mapping.length
+        ? wrap.mapping[boundaryLogical]
+        : {
+            line: wrap.lines.length - 1,
+            col: wrap.lines[wrap.lines.length - 1]?.length ?? 0,
+          }
+
+    for (let i = 0; i < wrap.lines.length; i++) {
+      const lineText = wrap.lines[i]
+      const drawRow = startRow + i
+      if (i < boundary.line) {
+        // Entirely committed
+        s.text(drawRow, HEADER_LABEL_WIDTH, lineText, { bold: true })
+      } else if (i > boundary.line) {
+        // Entirely in-progress
+        s.text(drawRow, HEADER_LABEL_WIDTH, lineText)
+      } else {
+        // Boundary row — split at boundary.col
+        const committed = lineText.slice(0, boundary.col)
+        const tail = lineText.slice(boundary.col)
+        if (committed) {
+          s.text(drawRow, HEADER_LABEL_WIDTH, committed, { bold: true })
+        }
+        if (tail) {
+          s.text(drawRow, HEADER_LABEL_WIDTH + committed.length, tail)
+        }
+      }
     }
-    const committedEnd = lastSep + 1 // include the separator char itself
-    const committed = truncated.slice(0, committedEnd)
-    const tail = truncated.slice(committedEnd)
-    s.text(row, startCol, committed, chipAttrs)
-    if (tail.length > 0) s.text(row, startCol + committed.length, tail)
   }
 
   private placeCursor(s: Surface): void {
     if (this.active === 'body') {
-      const visibleRow = 6 + (this.bodyRow - this.scrollOffset)
+      const visibleRow = this.bodyStartRow + (this.bodyRow - this.scrollOffset)
       const visibleCol = Math.min(this.bodyCol, s.cols - 1)
       s.setCursor(visibleRow, visibleCol)
       return
     }
-    const row = rowForField(this.active)
-    if (row === null) return
+    const layout = this.headerLayouts[this.active]
+    if (!layout) return
     const { col } = this.getActiveHeader()
-    s.setCursor(row, HEADER_LABEL_WIDTH + col)
+    if (layout.wrap) {
+      // Wrapped address field — find the cursor's (line, col) via the
+      // wrap mapping. Clamp the logical col into the valid range so an
+      // out-of-bounds value (e.g. from a programmatic jump) doesn't
+      // crash.
+      const m =
+        layout.wrap.mapping[Math.min(col, layout.wrap.mapping.length - 1)]
+      s.setCursor(layout.startRow + m.line, HEADER_LABEL_WIDTH + m.col)
+    } else {
+      // Single-row field (From / Subject) — straight projection.
+      s.setCursor(layout.startRow, HEADER_LABEL_WIDTH + col)
+    }
   }
 
   // ---- keymap ----
@@ -781,34 +850,106 @@ export class ComposeScreen implements Screen {
   }
 }
 
-function fieldForRow(row: number): Field | null {
-  switch (row) {
-    case 1:
-      return 'to'
-    case 2:
-      return 'cc'
-    case 3:
-      return 'bcc'
-    case 4:
-      return 'subject'
-    default:
-      return null
-  }
+interface WrappedField {
+  /** Display rows of the wrapped value. At least one row, even for
+   * empty input (then `lines = ['']`). */
+  lines: string[]
+  /** Map from logical character index in the original value to its
+   * display position. mapping[i] = where character `value[i]` ends up.
+   * mapping is `value.length + 1` long so mapping[value.length] is the
+   * position just after the last character — used for end-of-input
+   * cursor placement. */
+  mapping: { line: number; col: number }[]
 }
 
-function rowForField(field: Field): number | null {
-  switch (field) {
-    case 'to':
-      return 1
-    case 'cc':
-      return 2
-    case 'bcc':
-      return 3
-    case 'subject':
-      return 4
-    default:
-      return null
+interface FieldLayout {
+  /** First display row this field occupies. */
+  startRow: number
+  /** Null for single-row fields (From / Subject); the wrap structure
+   * for the address fields (To / Cc / Bcc). */
+  wrap: WrappedField | null
+}
+
+function emptyLayouts(): Record<Field, FieldLayout> {
+  const z = { startRow: 0, wrap: null }
+  return { to: z, cc: z, bcc: z, subject: z, body: z }
+}
+
+/**
+ * Wrap an address-list value across multiple display rows, breaking
+ * preferentially at `, ` or `; ` separator boundaries. Models pico /
+ * pine's compose header wrapping — when a recipient list outgrows the
+ * row width, the continuation rows let the user see every recipient
+ * without horizontal scrolling.
+ *
+ * Both first-row and continuation rows are the same width (the value
+ * column in compose has the same width on every row — continuation
+ * rows just keep the label column blank).
+ *
+ * Returns a `mapping` array so the cursor can be placed at the right
+ * `(line, col)` for any logical position in the original value.
+ */
+function wrapAddressValue(value: string, width: number): WrappedField {
+  if (width <= 0) {
+    // Defensive: nothing fits, render single line, mapping points all
+    // chars to col 0 of row 0.
+    return { lines: [value], mapping: value.split('').map(() => ({ line: 0, col: 0 })).concat([{ line: 0, col: 0 }]) }
   }
+  const lines: string[] = []
+  const mapping: { line: number; col: number }[] = []
+  let curLine = ''
+
+  for (let i = 0; i < value.length; i++) {
+    // Position where this char will land (may be updated below if we
+    // wrap before drawing it).
+    mapping.push({ line: lines.length, col: curLine.length })
+
+    if (curLine.length >= width) {
+      // Need to wrap. Look back on the current line for the last
+      // separator (`,` or `;`, with or without a trailing space). If
+      // we find one, break right after it; otherwise hard-break at
+      // the current column.
+      let wrapAt = -1
+      for (let j = curLine.length - 1; j >= 0; j--) {
+        if (curLine[j] === ',' || curLine[j] === ';') {
+          // wrap point is just after the separator; include a
+          // trailing space on the previous line if there is one.
+          wrapAt = curLine[j + 1] === ' ' ? j + 2 : j + 1
+          break
+        }
+      }
+      if (wrapAt > 0 && wrapAt < curLine.length) {
+        const tail = curLine.slice(wrapAt)
+        // The chars that moved are the LAST `tail.length` entries in
+        // mapping before the one we just pushed (mapping[length-1] is
+        // the wrap-trigger char, handled separately below). Indexing by
+        // mapping-entry index rather than curLine column avoids the
+        // bug where after multiple wraps the curLine column no longer
+        // corresponds to a mapping index 1:1.
+        const movedStart = mapping.length - 1 - tail.length
+        for (let k = 0; k < tail.length; k++) {
+          mapping[movedStart + k] = { line: lines.length + 1, col: k }
+        }
+        lines.push(curLine.slice(0, wrapAt))
+        curLine = tail
+      } else {
+        // No good wrap point — hard-break at the right edge.
+        lines.push(curLine)
+        curLine = ''
+      }
+      // The wrap-trigger char now sits at the start of the new line.
+      mapping[mapping.length - 1] = { line: lines.length, col: curLine.length }
+    }
+
+    curLine += value[i]
+  }
+  // End-of-input cursor position.
+  mapping.push({ line: lines.length, col: curLine.length })
+  lines.push(curLine)
+  // wrapAddressValue should always emit at least one line, even for empty input.
+  if (lines.length === 0) lines.push('')
+
+  return { lines, mapping }
 }
 
 // Address parsing lives in src/renderer/util/addresses.ts (uses the
