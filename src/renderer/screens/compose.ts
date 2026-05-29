@@ -1,3 +1,4 @@
+import { format } from 'date-fns'
 import type { Address, Draft, Message } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
@@ -854,22 +855,13 @@ export function replyAllCc(orig: Message, userEmail: string): string[] {
   return out
 }
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTHS = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-]
-
 // Modeled on Alpine's default DEFAULT_REPLY_INTRO branch in
 // pith/reply.c:reply_delimiter (~ln 2050): "On <Wkday>, <D> <Mon> <YYYY>,
-// <from> wrote:".
+// <from> wrote:". formatAttributionDateTime uses date-fns under the
+// hood so we don't carry English-only WEEKDAYS/MONTHS arrays.
 export function attributionLine(date: Date, from: Address): string {
-  const wk = WEEKDAYS[date.getDay()]
-  const d = date.getDate()
-  const mon = MONTHS[date.getMonth()]
-  const yr = date.getFullYear()
   const who = from.name ? `${from.name} <${from.email}>` : from.email
-  return `On ${wk}, ${d} ${mon} ${yr}, ${who} wrote:`
+  return `On ${format(date, 'EEE, d MMM yyyy')}, ${who} wrote:`
 }
 
 function attributionAndQuote(orig: Message): string[] {

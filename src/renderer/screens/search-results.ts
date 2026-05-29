@@ -2,6 +2,7 @@ import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { STATUS_BAR_CHROME } from '../surface/types'
+import { formatDateColumn } from '../util/dates'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 import { ViewScreen } from './view'
 
@@ -67,10 +68,8 @@ export class SearchResultsScreen implements Screen {
       if (isActive) s.fill(row, 0, s.cols, ' ', attrs)
 
       const dot = m.flags.read ? ' ' : '*'
-      const date =
-        m.receivedAt instanceof Date
-          ? m.receivedAt.toISOString().slice(0, 10)
-          : ''
+      // Local time, not UTC — see index-screen.ts for the day-boundary bug.
+      const date = m.receivedAt instanceof Date ? formatDateColumn(m.receivedAt) : ''
       const from = (m.from.name ?? m.from.email).slice(0, 24).padEnd(24)
       const subjectCol = 1 + 1 + 1 + 10 + 1 + 24 + 1
       const subjectWidth = Math.max(0, s.cols - subjectCol - 1)

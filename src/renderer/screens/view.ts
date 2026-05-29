@@ -3,6 +3,11 @@ import type { KeyMap } from '../keybind'
 import type { Attrs } from '../surface'
 import { STATUS_BAR_CHROME } from '../surface/types'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
+import {
+  formatHeaderDateTime,
+  formatMeetingDate,
+  formatMeetingTime,
+} from '../util/dates'
 import { AttachmentPickerScreen } from './attachment-picker'
 import { ComposeScreen, type ReplyKind } from './compose'
 import type { HelpInfo, Screen, ScreenContext } from './types'
@@ -210,7 +215,8 @@ export class ViewScreen implements Screen {
    * scrollable region instead. */
   private briefHeaderEntries(m: Message): [string, string][] {
     const entries: [string, string][] = []
-    const date = m.receivedAt instanceof Date ? m.receivedAt.toString() : ''
+    const date =
+      m.receivedAt instanceof Date ? formatHeaderDateTime(m.receivedAt) : ''
     const from = m.from.name ? `${m.from.name} <${m.from.email}>` : m.from.email
     const to = m.to.map(addrLabel).join(', ')
     const cc = m.cc.map(addrLabel).join(', ')
@@ -627,20 +633,10 @@ function drawTitledRule(
 function formatWhen(
   meeting: { start: Date; end: Date; isAllDay: boolean },
 ): string {
-  const dateOpts: Intl.DateTimeFormatOptions = {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-  }
-  const timeOpts: Intl.DateTimeFormatOptions = {
-    hour: '2-digit',
-    minute: '2-digit',
-  }
-  const date = meeting.start.toLocaleDateString(undefined, dateOpts)
+  const date = formatMeetingDate(meeting.start)
   if (meeting.isAllDay) return `${date}  (all day)`
-  const start = meeting.start.toLocaleTimeString(undefined, timeOpts)
-  const end = meeting.end.toLocaleTimeString(undefined, timeOpts)
+  const start = formatMeetingTime(meeting.start)
+  const end = formatMeetingTime(meeting.end)
   return `${date}  ${start} – ${end}`
 }
 

@@ -9,6 +9,7 @@
  * without touching the fetch logic.
  */
 
+import libmime from 'libmime'
 import type {
   Address,
   AttachmentInput,
@@ -294,9 +295,27 @@ export function flattenHeaders(
   if (!headers) return {}
   const out: Record<string, string> = {}
   for (const h of headers) {
-    out[h.name] = h.value
+    // Decode RFC 2047 encoded-words. Graph pre-decodes the structured
+    // `subject` / `from.name` / etc. fields but `internetMessageHeaders`
+    // arrives in wire form, so a real Subject like
+    // "=?UTF-8?B?aGVsbG8=?=" would surface as that literal string when
+    // the user toggles full headers (H) in view.ts. decodeWords handles
+    // base64 + quoted-printable, charset conversion, and the contiguous-
+    // encoded-word whitespace rule that mojibakes hand-rolled parsers.
+    out[h.name] = decodeHeaderValue(h.value)
   }
   return out
+}
+
+function decodeHeaderValue(value: string): string {
+  // libmime's decodeWords throws on truly malformed input rather than
+  // returning the original. Catch + fall back to raw so a single bad
+  // header doesn't blow up the whole headers panel.
+  try {
+    return libmime.decodeWords(value)
+  } catch {
+    return value
+  }
 }
 
 // ===== domain → Graph mappers (for sending) =====

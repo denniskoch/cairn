@@ -2,6 +2,7 @@ import type { MessageHeader } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { STATUS_BAR_CHROME } from '../surface/types'
+import { formatDateColumn } from '../util/dates'
 import { ComposeScreen, type ReplyKind } from './compose'
 import { SearchResultsScreen } from './search-results'
 import type { HelpInfo, Screen, ScreenContext } from './types'
@@ -215,10 +216,10 @@ export class IndexScreen implements Screen {
        // reading it. Falls back to '*' (unread) or blank.
       const readDot = m.isMeetingInvite ? 'I' : m.flags.read ? ' ' : '*'
       const flagMark = m.flags.flagged ? '!' : ' '
-      const date =
-        m.receivedAt instanceof Date
-          ? m.receivedAt.toISOString().slice(0, 10)
-          : ''
+      // Local time, not UTC — previous .toISOString().slice(0,10) was
+      // off by a day at the boundary (a message received at 23:30 local
+      // Tuesday showed up dated Wednesday).
+      const date = m.receivedAt instanceof Date ? formatDateColumn(m.receivedAt) : ''
       const from = (m.from.name ?? m.from.email).slice(0, 24).padEnd(24)
       const remaining = s.cols - 1 - 1 - 1 - 1 - 10 - 1 - 24 - 1 - 1
       const subject = m.subject.slice(0, Math.max(0, remaining))
