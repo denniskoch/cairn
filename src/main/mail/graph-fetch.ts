@@ -137,7 +137,18 @@ export async function fetchFullMessage(
   const m: GraphFullMessage = await graphRequest(
     getToken,
     `/me/messages/${encodeURIComponent(id)}`,
-    { query: { $select: FULL_MESSAGE_SELECT, $expand: FULL_MESSAGE_EXPAND } },
+    {
+      query: { $select: FULL_MESSAGE_SELECT, $expand: FULL_MESSAGE_EXPAND },
+      // Tell Graph to return event.start.dateTime / event.end.dateTime
+      // in UTC instead of the organizer's local timezone. Without this,
+      // Graph returns naive local-time strings (no offset) and we have
+      // no honest way to convert them — slapping a Z on the end treats
+      // local-time as UTC and shifts the displayed time by the
+      // organizer's offset. With the Prefer header, the dateTime IS
+      // UTC and the existing Date(`${dateTime}Z`) parse in toMeetingInfo
+      // produces the correct instant.
+      headers: { Prefer: 'outlook.timezone="UTC"' },
+    },
   )
   const header = toMessageHeader(m)
   let { bodyText, bodyHtml } = extractBody(m.uniqueBody, m.body)

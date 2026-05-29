@@ -242,11 +242,12 @@ export function toMeetingInfo(m: GraphFullMessage): MeetingInfo | undefined {
             ? 'tentative'
             : 'declined'
 
-  // Graph dateTimeTimeZone strings are 'YYYY-MM-DDTHH:MM:SS.fff' in
-  // the named zone (NOT ISO with Z). Date's parser accepts ISO without
-  // tz as local time, which is wrong; safest path is to ignore tz and
-  // assume UTC for display — close enough for v1 and the user can
-  // sanity-check against the organizer's local in the body.
+  // fetchFullMessage sends `Prefer: outlook.timezone="UTC"`, so Graph
+  // returns dateTime already in UTC (string like 'YYYY-MM-DDTHH:MM:SS')
+  // and start.timeZone == 'UTC'. Appending Z makes JS's parser treat
+  // the string as UTC instead of local — produces the correct instant,
+  // and the view layer's toLocaleTimeString converts to the user's
+  // local zone for display.
   const start = m.event.start?.dateTime
     ? new Date(`${m.event.start.dateTime}Z`)
     : new Date(0)

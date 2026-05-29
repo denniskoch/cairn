@@ -219,12 +219,27 @@ export class GraphProvider implements MailProvider {
     // URL parser even with the eventMessage type cast. So we need the
     // event id, which the cached MeetingInfo carries from the
     // $expand=event fetch on getMessage.
-    const cached = this.cache.getMessageFull(id)
-    const eventId = cached?.meeting?.eventId
+    //
+    // Cache miss can happen legitimately: a deep-link to a message that
+    // was only header-cached from listMessages, a row written before
+    // migration 005 added meeting columns, or a getMessage that failed
+    // partway. Falling back to a one-shot fetchFullMessage populates
+    // the cache as a side effect, so a retry won't need this path.
+    let eventId = this.cache.getMessageFull(id)?.meeting?.eventId
     if (!eventId) {
-      throw new Error(
-        'respondToInvite: no cached event id (open the message once so it gets fetched, then retry)',
-      )
+      const { message, folderId } = await fetchFullMessage(this.getToken, id)
+      // Best-effort cache write so a retry doesn't need this fallback.
+      try {
+        this.cache.upsertMessageFull(folderId, message)
+      } catch (err) {
+        console.warn('respondToInvite: cache upsert failed:', err)
+      }
+      eventId = message.meeting?.eventId
+      if (!eventId) {
+        throw new Error(
+          'respondToInvite: message is not a meeting invite (no event resource)',
+        )
+      }
     }
     await graphRequest(
       this.getToken,

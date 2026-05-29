@@ -41,14 +41,30 @@ export class KeybindDispatcher {
     this.globalMap = map
   }
 
-  /** Returns true if a handler claimed the key. */
+  /** Returns true if a handler claimed the key. A handler can explicitly
+   * decline the keystroke by returning `false` (synchronously) — used
+   * for context-sensitive bindings like Escape on compose, which only
+   * wants to claim when there's something to dismiss. */
   private dispatch(key: string, raw: KeyboardEvent): boolean {
     const top = this.stack[this.stack.length - 1]
     const handler = top?.[key] ?? this.globalMap[key]
     if (!handler) return false
-    Promise.resolve(handler({ key, raw })).catch((err) => {
+    let result: boolean | void | Promise<boolean | void>
+    try {
+      result = handler({ key, raw })
+    } catch (err) {
       console.error(`keybind handler for "${key}" threw:`, err)
-    })
-    return true
+      return true // claimed, even though it threw — don't leak to xterm
+    }
+    if (result instanceof Promise) {
+      // Async handlers can't declare pass-through after the fact —
+      // they're treated as having claimed. The Escape-style
+      // conditional pattern must decide synchronously.
+      result.catch((err) =>
+        console.error(`keybind handler for "${key}" rejected:`, err),
+      )
+      return true
+    }
+    return result !== false
   }
 }

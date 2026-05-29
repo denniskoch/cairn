@@ -2,6 +2,7 @@ import type { Address, Draft, Message } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
 import { STATUS_BAR_CHROME } from '../surface/types'
+import { readBoolPref } from '../util/prefs'
 import { AddressAutocompleteManager } from './compose-autocomplete'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
@@ -89,9 +90,11 @@ export class ComposeScreen implements Screen {
           : 'signature.onNew'
     const defaultOn = kind !== 'forward'
 
-    const enabledPref = await window.cairn.prefs.get(enabledKey)
-    const enabled = enabledPref === null ? defaultOn : enabledPref === 'on'
-    if (!enabled) return
+    // Use readBoolPref so a legacy non-canonical value like 'true' or
+    // '1' (from a future code path that writes prefs differently) still
+    // counts as on, rather than silently dropping to off. Only the
+    // literal 'off' disables.
+    if (!(await readBoolPref(enabledKey, defaultOn))) return
 
     const sig = await window.cairn.prefs.get('signature.text')
     if (!sig) return
@@ -708,11 +711,14 @@ export class ComposeScreen implements Screen {
         this.ctx?.invalidate()
       },
       Escape: () => {
-        // Only used to dismiss the dropdown — otherwise leave Escape
-        // alone so xterm / electron defaults still work.
-        if (this.dropdownActive()) {
-          this.autocomplete.clear()
-        }
+        // Escape only "belongs" to compose when the autocomplete
+        // dropdown is showing — then it dismisses the dropdown. In all
+        // other contexts return `false` so the dispatcher doesn't
+        // preventDefault and xterm/electron defaults still fire (e.g.
+        // unfocus the body in some environments). See KeybindHandler
+        // docs in keybind/types.ts for the pass-through contract.
+        if (!this.dropdownActive()) return false
+        this.autocomplete.clear()
       },
       ',': () => {
         if (this.isAddressField()) this.commitAddressSeparator()

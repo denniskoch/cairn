@@ -3,6 +3,7 @@ import type { Attrs } from '../surface'
 import { STATUS_BAR_CHROME } from '../surface/types'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import { DEFAULT_THEME_NAME } from '../themes'
+import { flipBoolPref, readBoolPrefLabel } from '../util/prefs'
 import { DEFAULT_VISUAL_FILTER } from '../visual-filter'
 import { SignatureEditorScreen } from './signature-editor'
 import { ThemePickerScreen } from './theme-picker'
@@ -19,19 +20,11 @@ interface SettingRow {
   open: (self: SetupScreen) => void
 }
 
-/** Helper: read a pref that holds a boolean-ish string ('on' | 'off')
- * and coerce to a labeled value for display. */
-async function readToggle(key: string, defaultOn: boolean): Promise<string> {
-  const v = await window.cairn.prefs.get(key)
-  if (v === 'on') return 'on'
-  if (v === 'off') return 'off'
-  return defaultOn ? 'on' : 'off'
-}
-
-async function flipToggle(key: string, defaultOn: boolean): Promise<void> {
-  const current = await readToggle(key, defaultOn)
-  await window.cairn.prefs.set(key, current === 'on' ? 'off' : 'on')
-}
+// readBoolPrefLabel + flipBoolPref live in util/prefs.ts so compose
+// and other future screens that read the same toggles use one
+// canonical defaulting rule (anything not 'off' is on, when set).
+const readToggle = readBoolPrefLabel
+const flipToggle = flipBoolPref
 
 /** Single-line preview of the signature: shows the first non-blank
  * line truncated, plus '(N lines)' when there are more lines. Empty
