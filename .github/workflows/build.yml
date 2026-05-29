@@ -75,6 +75,15 @@ jobs:
         # this works without extra setup.
         run: npm ci
 
+      # Gate the build on the unit suite. A test failure on any platform
+      # leg fails that leg and (via needs: build) blocks the release job,
+      # so a regression like the alpha.10 silent-recipient-drop can't ship
+      # in a tagged artifact. Tests are pure-logic + fast (<1s); running
+      # them on all three OS legs also catches any platform-specific
+      # surprise in node behavior.
+      - name: Run tests
+        run: npm test
+
       # electron-builder pulls the version from package.json, not from the
       # git tag. On tag pushes we rewrite the package version from the tag
       # name (stripping the leading `v`) so installer filenames and the
