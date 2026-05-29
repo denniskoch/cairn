@@ -2,6 +2,7 @@ import type { Address, Draft, Message } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
 import { STATUS_BAR_CHROME } from '../surface/types'
+import { parseAddressField } from '../util/addresses'
 import { readBoolPref } from '../util/prefs'
 import { AddressAutocompleteManager } from './compose-autocomplete'
 import type { HelpInfo, Screen, ScreenContext } from './types'
@@ -453,9 +454,9 @@ export class ComposeScreen implements Screen {
   }
 
   private buildDraft(): Draft | null {
-    const to = parseAddrField(this.to)
-    const cc = parseAddrField(this.cc)
-    const bcc = parseAddrField(this.bcc)
+    const to = parseAddressField(this.to)
+    const cc = parseAddressField(this.cc)
+    const bcc = parseAddressField(this.bcc)
 
     if (to.emails.length === 0) {
       this.setStatus('At least one recipient required.', true)
@@ -809,66 +810,9 @@ function rowForField(field: Field): number | null {
   }
 }
 
-/** Pull just the email out of one address-field segment. Accepts both
- * 'foo@bar' and 'Name <foo@bar>' forms; returns '' if no @ is found
- * so the caller can flag the entry as unresolved. */
-function extractEmail(segment: string): string {
-  const trimmed = segment.trim()
-  const angle = trimmed.match(/<([^>]+)>/)
-  const candidate = (angle ? angle[1] : trimmed).trim()
-  return candidate.includes('@') ? candidate : ''
-}
-
-/** True when a segment looks like 'Name <email@host>' — used to decide
- * whether a preceding bare-name segment should be re-glued onto it.
- * Conservative: requires the angle brackets to contain something with
- * an @ inside so we don't accidentally merge across unrelated text. */
-const ANGLE_EMAIL = /<[^@>]+@[^>]+>/
-
-/** Split an address-field value into segments, then re-glue adjacent
- * pairs where the left side is a bare name (no @) and the right side
- * has '<email>' — that recovers 'Last, First <email>' (the corporate
- * directory format Outlook outputs by default) after a naive split on
- * comma chopped it in half. NOT a full RFC 5322 parser; doesn't try
- * to handle quoted display names like '"Doe, John" <j@x>' because
- * almost no one actually writes those. */
-function splitAddrField(s: string): string[] {
-  const raw = s
-    .split(/[,;]/)
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0)
-  const out: string[] = []
-  let i = 0
-  while (i < raw.length) {
-    let segment = raw[i]
-    while (
-      !segment.includes('@') &&
-      i + 1 < raw.length &&
-      ANGLE_EMAIL.test(raw[i + 1])
-    ) {
-      segment = `${segment}, ${raw[i + 1]}`
-      i++
-    }
-    out.push(segment)
-    i++
-  }
-  return out
-}
-
-/** Resolve a typed address-field value into emails + leftover bare
- * names the user couldn't or didn't expand. Unresolved entries let
- * buildDraft refuse to send instead of having Graph 400 on
- * ErrorInvalidRecipients. */
-function parseAddrField(s: string): { emails: string[]; unresolved: string[] } {
-  const emails: string[] = []
-  const unresolved: string[] = []
-  for (const segment of splitAddrField(s)) {
-    const email = extractEmail(segment)
-    if (email) emails.push(email)
-    else unresolved.push(segment)
-  }
-  return { emails, unresolved }
-}
+// Address parsing lives in src/renderer/util/addresses.ts (uses the
+// email-addresses npm package — full RFC 5322 + RFC 6532 compliance).
+// buildDraft above calls parseAddressField() for each header.
 
 function readOnlyFrom(): string {
   // Filled in once we have the signed-in address available. For step 14
