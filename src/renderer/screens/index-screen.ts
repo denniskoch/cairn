@@ -329,6 +329,10 @@ export class IndexScreen implements Screen {
       Enter: () => void this.submitSearch(),
       Escape: () => this.exitSearchMode(),
       'Ctrl+C': () => this.exitSearchMode(),
+      // `?` is a literal in a search query — shadow the global help
+      // binding (which is on the keymap below this one in the stack)
+      // so the user can search for a question mark.
+      '?': () => this.handleSearchInput('?'),
       Backspace: () => {
         if (this.searchCursor > 0) {
           this.searchInput =

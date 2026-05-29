@@ -6,6 +6,7 @@ import { parseAddressField } from '../util/addresses'
 import { formatAttributionDate } from '../util/dates'
 import { readBoolPref } from '../util/prefs'
 import { AddressAutocompleteManager } from './compose-autocomplete'
+import { HelpScreen } from './help'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
 type Field = 'to' | 'cc' | 'bcc' | 'subject' | 'body'
@@ -856,6 +857,15 @@ export class ComposeScreen implements Screen {
         else this.handleTextInput(';')
         this.ctx?.invalidate()
       },
+      // `?` is a literal character while composing — the global help
+      // binding must NOT fire here or you couldn't type a question mark
+      // in your own message. Help in compose is ^G (pico convention),
+      // advertised in the keymenu and wired below. Binding `?` in the
+      // screen keymap shadows the global handler (top map wins).
+      '?': () => {
+        this.handleTextInput('?')
+        this.ctx?.invalidate()
+      },
       Backspace: () => {
         this.backspace()
         this.ctx?.invalidate()
@@ -873,6 +883,12 @@ export class ComposeScreen implements Screen {
       },
 
       // Commands
+      'Ctrl+G': () => {
+        // pico-style help. The global `?` handler is shadowed in
+        // compose (see the `?` binding above), so ^G is how you reach
+        // help while composing — matching the "^G Help" keymenu label.
+        if (this.ctx) void this.ctx.router.push(new HelpScreen(this.helpInfo()))
+      },
       'Ctrl+X': () => this.send(),
       'Ctrl+O': () => this.saveDraft(),
       'Ctrl+C': () => this.cancel(),

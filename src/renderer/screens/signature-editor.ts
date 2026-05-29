@@ -152,6 +152,14 @@ export class SignatureEditorScreen implements Screen {
     return {
       'Ctrl+X': () => void this.save(),
       'Ctrl+C': () => void this.ctx?.router.pop(),
+      // `?` is a literal character in the signature editor — shadow the
+      // global help binding so the user can type a question mark. (A
+      // signature is free text; '?' is common.) This is a text editor
+      // with no room for a help key in its vocabulary; Q/^C exits.
+      '?': () => {
+        this.insertChar('?')
+        this.ctx?.invalidate()
+      },
       Enter: () => {
         const line = this.lines[this.row]
         const before = line.slice(0, this.col)
