@@ -15,6 +15,12 @@ import type { HelpInfo, Screen, ScreenContext } from './types'
 
 const BRIEF_HEADERS = ['Date', 'From', 'To', 'Cc', 'Subject']
 
+// Minimum body rows the pinned region (brief headers + invite block)
+// must leave visible, so a long recipient list or attendee roster can't
+// swallow the whole screen. Overflow defers to the H full-headers
+// toggle (recipients) or the roster "+N more" tally (attendees).
+const MIN_BODY_ROWS = 4
+
 interface NavContext {
   messages: MessageHeader[]
   index: number
@@ -146,7 +152,6 @@ export class ViewScreen implements Screen {
     // shown and the complete list is available via the H toggle, which
     // renders the raw To/Cc in the scrollable region below.
     const briefEntries = this.briefHeaderEntries(m)
-    const MIN_BODY_ROWS = 4
     const headerBottom = s.rows - 2 - STATUS_BAR_CHROME - MIN_BODY_ROWS
     const valueWidth = s.cols - 12 - 1 // value starts col 12, 1-col right margin
     const labelAttrs: Attrs = { bold: true }
@@ -324,12 +329,44 @@ export class ViewScreen implements Screen {
       row++
     }
 
-    // Response status — bold + colored by state so the user can see
-    // "ACCEPTED" green / "DECLINED" red at a glance instead of the
-    // muted grey it used to be.
+    // Response status — bold by state (monochrome; the word itself
+    // names the state).
     s.text(row, 4, respPrefix)
     s.text(row, 4 + respPrefix.length, respState, respAttrs)
     row++
+
+    // Attendee roster — modeled on Alpine's VEVENT attendee list
+    // (pith/mailview.c): one line per invitee as
+    //   [Role]  [ Status ]  Name <email>
+    // capped so a large meeting can't swallow the pinned block; an
+    // overflow line summarizes the rest, and a tally line gives the
+    // accepted/declined/tentative/no-reply counts at a glance.
+    const attendees = meeting.attendees ?? []
+    if (attendees.length > 0) {
+      // Floor: leave room for the (optional) action-keys row + bottom
+      // rule + a few body rows below the pinned block.
+      const reserveBelow = (meeting.kind === 'request' ? 1 : 0) + 1 + MIN_BODY_ROWS
+      const rosterBottom = s.rows - 2 - STATUS_BAR_CHROME - reserveBelow
+
+      s.text(row, 4, `Attendees (${attendees.length}):`, labelAttrs)
+      row++
+
+      let shown = 0
+      for (const a of attendees) {
+        if (row >= rosterBottom) break
+        const line = `${attendeeRoleLabel(a.role)} ${attendeeStatusLabel(a.response)} ${attendeeName(a)}`
+        s.text(row, 6, line.slice(0, s.cols - 8))
+        row++
+        shown++
+      }
+      if (shown < attendees.length && row < rosterBottom + 1) {
+        const tally = attendeeTally(attendees)
+        s.text(row, 6, `… and ${attendees.length - shown} more — ${tally}`, {
+          fg: 'brightBlack',
+        })
+        row++
+      }
+    }
 
     // Action keys — only for kinds the user can still RSVP to.
     if (meeting.kind === 'request') {
@@ -613,6 +650,72 @@ export class ViewScreen implements Screen {
 
 function addrLabel(a: { email: string; name?: string }): string {
   return a.name ? `${a.name} <${a.email}>` : a.email
+}
+
+// ----- attendee roster (modeled on Alpine pith/mailview.c) -----
+
+/** Bracketed, fixed-width role tag — Alpine uses [Required] / [Optional]
+ * / etc.; Graph's third role is 'resource' (a booked room/equipment). */
+function attendeeRoleLabel(role: import('../../shared/mail').AttendeeRole): string {
+  switch (role) {
+    case 'optional':
+      return '[Optional]'
+    case 'resource':
+      return '[Resource]'
+    case 'required':
+    default:
+      return '[Required]'
+  }
+}
+
+/** Bracketed, fixed-width RSVP tag. Widths are padded so the names line
+ * up in a column regardless of status — same idea as Alpine's
+ * '[ Accepted ]' / '[ Declined ]' / '[Need-Reply]' fixed-width tags. */
+function attendeeStatusLabel(
+  r: import('../../shared/mail').MeetingResponse,
+): string {
+  switch (r) {
+    case 'accepted':
+      return '[ Accepted ]'
+    case 'declined':
+      return '[ Declined ]'
+    case 'tentative':
+      return '[ Tentative]'
+    case 'organizer':
+      return '[ Organizer]'
+    case 'none':
+    case 'notResponded':
+    default:
+      return '[Need-Reply]'
+  }
+}
+
+function attendeeName(a: import('../../shared/mail').Attendee): string {
+  return a.name && a.name !== a.email ? `${a.name} <${a.email}>` : a.email
+}
+
+/** One-line accepted/declined/tentative/no-reply tally for the roster
+ * overflow summary, e.g. "8 yes, 2 no, 1 maybe, 3 no reply". Only the
+ * non-zero buckets appear. */
+function attendeeTally(
+  attendees: import('../../shared/mail').Attendee[],
+): string {
+  let yes = 0
+  let no = 0
+  let maybe = 0
+  let pending = 0
+  for (const a of attendees) {
+    if (a.response === 'accepted') yes++
+    else if (a.response === 'declined') no++
+    else if (a.response === 'tentative') maybe++
+    else if (a.response !== 'organizer') pending++
+  }
+  const parts: string[] = []
+  if (yes) parts.push(`${yes} yes`)
+  if (no) parts.push(`${no} no`)
+  if (maybe) parts.push(`${maybe} maybe`)
+  if (pending) parts.push(`${pending} no reply`)
+  return parts.join(', ')
 }
 
 /** Emphasis for a meeting response state. Monochrome: bold for

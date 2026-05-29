@@ -12,6 +12,7 @@
 import libmime from 'libmime'
 import type {
   Address,
+  Attendee,
   AttachmentInput,
   AttachmentMeta,
   MeetingInfo,
@@ -67,6 +68,12 @@ export type GraphResponseStatus = {
 export type GraphBody = { contentType: 'text' | 'html'; content: string }
 export type GraphInternetHeader = { name: string; value: string }
 
+export type GraphAttendee = {
+  type?: 'required' | 'optional' | 'resource'
+  status?: GraphResponseStatus
+  emailAddress?: { address?: string; name?: string }
+}
+
 export type GraphEvent = {
   id?: string
   start?: GraphDateTimeTimeZone
@@ -75,6 +82,7 @@ export type GraphEvent = {
   location?: GraphLocation
   organizer?: GraphEmailAddress
   responseStatus?: GraphResponseStatus
+  attendees?: GraphAttendee[]
   body?: GraphBody
 }
 
@@ -146,7 +154,7 @@ const MEETING_TYPE_PROP = 'microsoft.graph.eventMessage/meetingMessageType'
 // (especially organizer-cancelled meetings and certain calendar-app
 // generated invites). extractBody falls back to event.body in that case.
 const MEETING_EVENT_EXPAND =
-  'microsoft.graph.eventMessage/event($select=id,start,end,isAllDay,location,organizer,responseStatus,body)'
+  'microsoft.graph.eventMessage/event($select=id,start,end,isAllDay,location,organizer,responseStatus,attendees,body)'
 
 export const MESSAGE_SELECT = [
   'id',
@@ -228,6 +236,27 @@ function isInviteKind(t: GraphMeetingMessageType | undefined): boolean {
   return t === 'meetingRequest' || t === 'meetingCancelled'
 }
 
+/** Map Graph's responseStatus.response enum to Cairn's MeetingResponse.
+ * Shared by the message-level myResponse and the per-attendee status. */
+function toMeetingResponse(
+  r: GraphResponseStatus['response'] | undefined,
+): MeetingResponse {
+  switch (r) {
+    case 'organizer':
+      return 'organizer'
+    case 'tentativelyAccepted':
+      return 'tentative'
+    case 'accepted':
+      return 'accepted'
+    case 'declined':
+      return 'declined'
+    case 'notResponded':
+      return 'notResponded'
+    default:
+      return 'none'
+  }
+}
+
 export function toMeetingInfo(m: GraphFullMessage): MeetingInfo | undefined {
   const t = m.meetingMessageType
   if (!t || t === 'none' || !m.event) return undefined
@@ -256,16 +285,14 @@ export function toMeetingInfo(m: GraphFullMessage): MeetingInfo | undefined {
     ? new Date(`${m.event.end.dateTime}Z`)
     : new Date(0)
 
-  const respMap: Record<NonNullable<GraphResponseStatus['response']>, MeetingResponse> = {
-    none: 'none',
-    organizer: 'organizer',
-    tentativelyAccepted: 'tentative',
-    accepted: 'accepted',
-    declined: 'declined',
-    notResponded: 'notResponded',
-  }
-  const myResponse: MeetingResponse =
-    respMap[m.event.responseStatus?.response ?? 'none'] ?? 'none'
+  const myResponse = toMeetingResponse(m.event.responseStatus?.response)
+
+  const attendees: Attendee[] = (m.event.attendees ?? []).map((a) => ({
+    name: a.emailAddress?.name,
+    email: a.emailAddress?.address ?? '(unknown)',
+    role: a.type ?? 'required',
+    response: toMeetingResponse(a.status?.response),
+  }))
 
   return {
     kind,
@@ -276,6 +303,7 @@ export function toMeetingInfo(m: GraphFullMessage): MeetingInfo | undefined {
     location: m.event.location?.displayName?.trim() || undefined,
     organizer: toAddress(m.event.organizer),
     myResponse,
+    attendees,
   }
 }
 

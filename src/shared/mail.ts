@@ -70,6 +70,20 @@ export type MeetingResponse =
   | 'declined'
   | 'notResponded'
 
+/** How an attendee was invited. Graph distinguishes required vs optional
+ * invitees and room/equipment 'resource' bookings. */
+export type AttendeeRole = 'required' | 'optional' | 'resource'
+
+/** One invitee on a meeting, with their current RSVP. Modeled on the
+ * attendee roster Alpine renders for a VEVENT (pith/mailview.c) — role
+ * + response + name/email per line. */
+export interface Attendee {
+  name?: string
+  email: string
+  role: AttendeeRole
+  response: MeetingResponse
+}
+
 export interface MeetingInfo {
   kind: MeetingKind
   /** Graph event id — needed for accept/decline/tentativelyAccept,
@@ -82,6 +96,10 @@ export interface MeetingInfo {
   organizer: Address
   /** Current user's RSVP state per the event resource. */
   myResponse: MeetingResponse
+  /** Full invitee roster with each attendee's RSVP. Empty when Graph
+   * didn't expand attendees (or the event had none). Cached as part of
+   * the meeting_info JSON blob — no separate column. */
+  attendees: Attendee[]
 }
 
 export interface Attachment extends AttachmentMeta {
