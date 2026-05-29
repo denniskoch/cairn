@@ -25,6 +25,12 @@ asarUnpack:
   - "**/better_sqlite3.node"
 
 mac:
+  # macOS expects a pre-squircled icon since Big Sur (the OS no longer
+  # auto-applies the rounded-app mask to bundle icons). build/icon-mac.png
+  # has the squircle baked in. electron-builder generates the .icns from
+  # this PNG. Windows / Linux fall back to build/icon.png (square) via
+  # buildResources defaults.
+  icon: build/icon-mac.png
   target:
     - dmg
     - zip

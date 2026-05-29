@@ -34,15 +34,18 @@ let contactsProvider: ContactsProvider | null = null
 let sync: SyncScheduler | null = null
 let cache: MailCache | null = null
 
-/** Load build/icon.png for use as the dev-mode window/dock icon. In
- * packaged builds, electron-builder bakes the icon into the bundle
- * (.icns on macOS, .ico on Windows, AppImage embedded on Linux) from
- * the same source, and the OS picks it up automatically — no need to
- * set it on BrowserWindow there. */
+/** Load the dev-mode window/dock icon. On macOS we use icon-mac.png
+ * (squircled — Big Sur+ no longer auto-applies the rounded-app mask
+ * to icons handed to setIcon/BrowserWindow.icon, so we have to ship
+ * it pre-masked or the dock shows square corners). Other platforms
+ * use the square icon.png. In packaged builds, electron-builder bakes
+ * the platform-appropriate format into the bundle, so no override is
+ * needed there. */
 function loadDevIcon(): Electron.NativeImage | undefined {
   if (app.isPackaged) return undefined
+  const file = process.platform === 'darwin' ? 'icon-mac.png' : 'icon.png'
   const icon = nativeImage.createFromPath(
-    join(__dirname, '../../build/icon.png'),
+    join(__dirname, '../../build', file),
   )
   return icon.isEmpty() ? undefined : icon
 }

@@ -1,4 +1,6 @@
-<img src="build/icon.png" alt="Cairn icon" width="128" align="right" />
+<p align="center">
+  <img src="docs/cairn-logo.png" alt="Cairn — Alpine Mail Emulator" width="280" />
+</p>
 
 # Cairn
 
