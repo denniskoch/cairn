@@ -308,9 +308,12 @@ export function flattenHeaders(
 }
 
 function decodeHeaderValue(value: string): string {
-  // libmime's decodeWords throws on truly malformed input rather than
-  // returning the original. Catch + fall back to raw so a single bad
-  // header doesn't blow up the whole headers panel.
+  // In practice libmime.decodeWords doesn't throw — it returns the
+  // replacement char / best-effort mojibake for malformed encoded-words
+  // rather than raising. The try/catch is a cheap guard against that
+  // behavior changing in a future libmime version (and against a
+  // pathological input we haven't seen); on any throw we fall back to
+  // the raw wire value so one bad header can't break the headers panel.
   try {
     return libmime.decodeWords(value)
   } catch {

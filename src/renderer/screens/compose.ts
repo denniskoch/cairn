@@ -1,9 +1,9 @@
-import { format } from 'date-fns'
 import type { Address, Draft, Message } from '../../shared/mail'
 import type { KeyMap } from '../keybind'
 import type { Attrs, Surface } from '../surface'
 import { STATUS_BAR_CHROME } from '../surface/types'
 import { parseAddressField } from '../util/addresses'
+import { formatAttributionDate } from '../util/dates'
 import { readBoolPref } from '../util/prefs'
 import { AddressAutocompleteManager } from './compose-autocomplete'
 import type { HelpInfo, Screen, ScreenContext } from './types'
@@ -223,7 +223,9 @@ export class ComposeScreen implements Screen {
     if (!this.dropdownActive()) return
     const sug = this.autocomplete.current()
     if (!sug) return
-    const formatted = sug.name ? `${sug.name} <${sug.email}>` : sug.email
+    const formatted = sug.name
+      ? `${quoteDisplayName(sug.name)} <${sug.email}>`
+      : sug.email
     this.replaceCurrentPrefix(formatted, addSeparator)
     this.autocomplete.clear()
   }
@@ -1021,6 +1023,21 @@ function wrapAddressValue(value: string, width: number): WrappedField {
 // buildDraft above calls parseAddressField() for each header.
 
 /**
+ * Quote an autocomplete display name for the `Name <email>` form when it
+ * contains a character that would make the unquoted name ambiguous to a
+ * recipient-list parser — most importantly a comma (GAL names are often
+ * `Lastname, Firstname`). Without this, accepting a contact named
+ * "Doe, John" inserts `Doe, John <jd@x.com>`, and a following recipient
+ * could be absorbed into the comma-extended display name and silently
+ * dropped on send. RFC 5322 quoted-string rules: wrap in double quotes
+ * and backslash-escape any `"` or `\`.
+ */
+function quoteDisplayName(name: string): string {
+  if (!/[,;:<>@"\\()[\]]/.test(name)) return name
+  return `"${name.replace(/([\\"])/g, '\\$1')}"`
+}
+
+/**
  * Replace `\n` markers (forced row breaks inserted by Enter in an
  * address field) with `, ` before parseAddressField sees the value.
  *
@@ -1103,11 +1120,11 @@ export function replyAllCc(orig: Message, userEmail: string): string[] {
 
 // Modeled on Alpine's default DEFAULT_REPLY_INTRO branch in
 // pith/reply.c:reply_delimiter (~ln 2050): "On <Wkday>, <D> <Mon> <YYYY>,
-// <from> wrote:". formatAttributionDateTime uses date-fns under the
-// hood so we don't carry English-only WEEKDAYS/MONTHS arrays.
+// <from> wrote:". formatAttributionDate centralizes the date-fns format
+// so we don't carry English-only WEEKDAYS/MONTHS arrays.
 export function attributionLine(date: Date, from: Address): string {
   const who = from.name ? `${from.name} <${from.email}>` : from.email
-  return `On ${format(date, 'EEE, d MMM yyyy')}, ${who} wrote:`
+  return `On ${formatAttributionDate(date)}, ${who} wrote:`
 }
 
 function attributionAndQuote(orig: Message): string[] {

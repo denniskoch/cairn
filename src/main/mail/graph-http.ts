@@ -8,6 +8,14 @@ const GRAPH_BASE = 'https://graph.microsoft.com/v1.0'
  * Graph hiccups and aligned with what other Graph clients use. */
 const MAX_RETRIES = 4
 
+/** Upper bound on how long we'll honor a server's Retry-After before
+ * giving up on the per-header wait and letting p-retry's own bounded
+ * backoff take over. A broken or hostile server can send
+ * `Retry-After: 86400` (a full day); without a cap, onFailedAttempt
+ * would sleep the request — and whatever sync/UI flow awaits it — for
+ * that whole time. 60s is well past any legitimate Graph throttle. */
+const MAX_RETRY_AFTER_MS = 60_000
+
 export type GetTokenFn = () => Promise<string>
 
 type Query = Record<string, string | number | undefined>
@@ -144,19 +152,25 @@ async function attempt<T>(
   return JSON.parse(text) as T
 }
 
-/** Parse Retry-After from a thrown error into milliseconds. Graph sends
- * it either as an integer-seconds string ("60") or an HTTP-date
- * (RFC 7231 section 7.1.3). Returns null if not present / unparseable
- * so p-retry uses its own backoff. */
+/** Parse Retry-After from a thrown error into milliseconds, clamped to
+ * MAX_RETRY_AFTER_MS. Graph sends it either as an integer-seconds
+ * string ("60") or an HTTP-date (RFC 7231 section 7.1.3). Returns null
+ * if not present / unparseable so p-retry uses its own backoff. */
 function retryAfterFromError(err: unknown): number | null {
   const v = (err as { retryAfter?: string | null })?.retryAfter
   if (!v) return null
-  // Seconds form: a non-negative integer.
-  if (/^\d+$/.test(v)) return Number(v) * 1000
-  // HTTP-date form: parse and diff from now.
-  const t = Date.parse(v)
-  if (Number.isNaN(t)) return null
-  return Math.max(0, t - Date.now())
+  let ms: number
+  if (/^\d+$/.test(v)) {
+    // Seconds form: a non-negative integer.
+    ms = Number(v) * 1000
+  } else {
+    // HTTP-date form: parse and diff from now.
+    const t = Date.parse(v)
+    if (Number.isNaN(t)) return null
+    ms = Math.max(0, t - Date.now())
+  }
+  // Clamp so a huge Retry-After can't stall the request for minutes/days.
+  return Math.min(ms, MAX_RETRY_AFTER_MS)
 }
 
 function buildUrl(path: string, query?: Query): string {

@@ -15,47 +15,62 @@ import addrs from 'email-addresses'
  *   - Partial recovery from malformed input — valid addresses come
  *     through, garbage goes into `unresolved`
  *
- * Strategy: try a strict whole-list parse first (handles groups
- * cleanly, and the library's `commaInDisplayName` flag absorbs the
- * Outlook unquoted-comma pattern). If the strict parse rejects the
- * input, fall back to per-segment parsing — split on top-level
- * commas/semicolons (respecting quotes, angle brackets, comments),
- * try each segment, and re-glue consecutive failing+succeeding pairs
- * to recover unquoted-comma names that the top-level split chopped in
- * half.
+ * Strategy — chosen specifically to never SILENTLY drop a recipient:
  *
- * Returns `{ emails, unresolved }` so compose can refuse to send a
- * message with any unresolved segment, surfacing the bad text to the
- * user instead of letting Graph reject with ErrorInvalidRecipients.
+ *   1. Strict whole-list parse with NO display-name comma/at extensions
+ *      (`commaInDisplayName` / `atInDisplayName` OFF). With those flags
+ *      ON, the grammar greedily absorbs comma-separated bare addresses
+ *      into the preceding mailbox's display name — e.g.
+ *      `Team, lead@x.com, alice@a.com <jd@x.com>` parses as ONE mailbox
+ *      `jd@x.com` with everything else swallowed into the name, and the
+ *      whole-list parser reports success with no leftovers. The user
+ *      would mail one person believing they'd addressed four. Turning
+ *      the flags off makes comma an unconditional separator, so the
+ *      strict parse only succeeds on genuinely unambiguous input
+ *      (plain lists, QUOTED comma-names, groups, RFC 6532 Unicode).
+ *
+ *   2. When the strict parse rejects the input — which now includes the
+ *      legitimate-but-ambiguous unquoted-comma name `Doe, John <x>` —
+ *      fall back to per-segment parsing. Split on top-level commas and
+ *      semicolons (respecting quotes / angle-addrs / comments), parse
+ *      each segment, and for a segment that fails AND contains no `@`
+ *      (a pure display-name fragment), re-glue it with the next segment
+ *      using `commaInDisplayName` to recover `Doe, John <x>`. The
+ *      no-`@` guard is what prevents the re-glue from re-absorbing a
+ *      real address: a fragment like `lead@x.com` is never glued onto
+ *      its neighbor, so it can't vanish into a name.
+ *
+ * Anything that still won't parse lands in `unresolved`, and
+ * buildDraft refuses to send while any field has unresolved entries —
+ * surfacing the bad text to the user rather than quietly dropping it
+ * or letting Graph reject with ErrorInvalidRecipients.
  */
 export interface ParsedAddressField {
   emails: string[]
   unresolved: string[]
 }
 
-const PARSE_OPTS = {
-  rfc6532: true,
-  commaInDisplayName: true,
-  atInDisplayName: true,
-} as const
+// Whole-list + plain-segment parsing: strict RFC, comma is always a
+// separator. rfc6532 stays on for internationalized addresses.
+const STRICT_OPTS = { rfc6532: true } as const
+// Used ONLY for the conservative re-glue of a no-@ name fragment with
+// its following segment — lets the comma live inside the display name
+// for the `Doe, John <x>` recovery without enabling it list-wide.
+const NAME_GLUE_OPTS = { rfc6532: true, commaInDisplayName: true } as const
 
 export function parseAddressField(input: string): ParsedAddressField {
   const trimmed = input.trim()
   if (!trimmed) return { emails: [], unresolved: [] }
 
-  // Strict parse first. When this succeeds the input is RFC-clean and
-  // we don't need any of the heuristics below — including group syntax
-  // (`name: a@x, b@y;`) which the library handles correctly when the
-  // semicolons aren't being used as separators.
-  const whole = addrs.parseAddressList({ input: trimmed, ...PARSE_OPTS })
+  // Strict parse first (no display-name comma absorption — see header).
+  const whole = addrs.parseAddressList({ input: trimmed, ...STRICT_OPTS })
   if (whole && whole.length > 0) {
     return { emails: flattenMailboxes(whole), unresolved: [] }
   }
 
-  // Strict parse failed. User probably mixed separators, has malformed
-  // segments, or has both. Split on top-level commas AND semicolons
-  // (outside quotes / angle-addrs / parenthesized comments), and try
-  // each segment in isolation.
+  // Strict parse rejected the input — mixed separators, an unquoted
+  // comma-name, malformed segments, or a combination. Split on
+  // top-level separators and try each segment in isolation.
   const segments = splitTopLevel(trimmed)
   if (segments.length === 0) {
     return { emails: [], unresolved: [trimmed] }
@@ -66,22 +81,23 @@ export function parseAddressField(input: string): ParsedAddressField {
   let i = 0
   while (i < segments.length) {
     const seg = segments[i]
-    const r = addrs.parseOneAddress({ input: seg, ...PARSE_OPTS })
+    const r = addrs.parseOneAddress({ input: seg, ...STRICT_OPTS })
     if (r && r.type === 'mailbox') {
-      emails.push(r.address)
+      emails.push(r.address.trim())
       i++
       continue
     }
-    // Couldn't parse this segment alone. Try re-gluing with the NEXT
-    // segment — recovers `Doe, John <john@x>` when the comma split it
-    // into `Doe` and `John <john@x>`. Only attempt a single re-glue
-    // forward; chains beyond two segments don't represent realistic
-    // unquoted-comma cases.
-    if (i + 1 < segments.length) {
+    // Couldn't parse this segment alone. Re-glue with the next segment
+    // ONLY when this one is a pure name fragment (no `@`) — recovers
+    // `Doe, John <john@x>` after the comma split it into `Doe` and
+    // `John <john@x>`. The no-`@` guard is the safety check: a real
+    // address fragment is never glued onto a neighbor, so it can't be
+    // absorbed into a display name and silently disappear.
+    if (!seg.includes('@') && i + 1 < segments.length) {
       const glued = `${seg}, ${segments[i + 1]}`
-      const r2 = addrs.parseOneAddress({ input: glued, ...PARSE_OPTS })
+      const r2 = addrs.parseOneAddress({ input: glued, ...NAME_GLUE_OPTS })
       if (r2 && r2.type === 'mailbox') {
-        emails.push(r2.address)
+        emails.push(r2.address.trim())
         i += 2
         continue
       }
@@ -99,11 +115,11 @@ function flattenMailboxes(
   const out: string[] = []
   for (const e of parsed) {
     if (e.type === 'mailbox') {
-      out.push(e.address)
+      out.push(e.address.trim())
     } else {
       // group: silently drop the group name (Graph's recipient list is
       // flat) and include each member address.
-      for (const m of e.addresses) out.push(m.address)
+      for (const m of e.addresses) out.push(m.address.trim())
     }
   }
   return out
