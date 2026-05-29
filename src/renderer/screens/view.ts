@@ -8,6 +8,7 @@ import {
   formatMeetingDate,
   formatMeetingTime,
 } from '../util/dates'
+import { wrapToWidth } from '../util/wrap'
 import { AttachmentPickerScreen } from './attachment-picker'
 import { ComposeScreen, type ReplyKind } from './compose'
 import type { HelpInfo, Screen, ScreenContext } from './types'
@@ -131,17 +132,42 @@ export class ViewScreen implements Screen {
     s.text(0, s.cols - counter.length - 4, counter, { inverse: true })
     drawSyncIndicator(s)
 
-    // Brief headers — always pinned at the top, never scrolled. These
-    // are short (Date/From/To/Cc/Subject/Attach) and fit cleanly in the
-    // fixed 10-col label / 12-col value layout. Full headers, when H
-    // toggles them on, live in the scrollable region below.
-    let row = 2
+    // Brief headers — pinned at the top, never scrolled. Long values
+    // (especially To/Cc recipient lists) WRAP onto continuation rows
+    // rather than truncating at the screen edge — modeled on Alpine's
+    // gf_wrap header folding (pith/mailview.c), which never drops a
+    // recipient. Continuation rows leave the label column blank so the
+    // value column stays aligned.
+    //
+    // To keep a pathological recipient list (a 200-person newsletter)
+    // from swallowing the whole screen, the pinned block is capped to
+    // leave at least MIN_BODY_ROWS for the message body; if a value
+    // overflows that cap a "(more — H for full headers)" marker is
+    // shown and the complete list is available via the H toggle, which
+    // renders the raw To/Cc in the scrollable region below.
     const briefEntries = this.briefHeaderEntries(m)
+    const MIN_BODY_ROWS = 4
+    const headerBottom = s.rows - 2 - STATUS_BAR_CHROME - MIN_BODY_ROWS
+    const valueWidth = s.cols - 12 - 1 // value starts col 12, 1-col right margin
     const labelAttrs: Attrs = { bold: true }
-    for (const [label, value] of briefEntries) {
-      if (row >= s.rows - 3 - STATUS_BAR_CHROME) break
-      s.text(row, 2, `${label}:`.padEnd(10), labelAttrs)
-      s.text(row, 12, value.slice(0, s.cols - 13))
+    let row = 2
+    let truncated = false
+    outer: for (const [label, value] of briefEntries) {
+      const lines = value ? wrapToWidth(value, valueWidth) : ['']
+      for (let li = 0; li < lines.length; li++) {
+        if (row >= headerBottom) {
+          truncated = true
+          break outer
+        }
+        if (li === 0) s.text(row, 2, `${label}:`.padEnd(10), labelAttrs)
+        s.text(row, 12, lines[li])
+        row++
+      }
+    }
+    if (truncated && row < s.rows - 2 - STATUS_BAR_CHROME) {
+      s.text(row, 12, '(more — press H for full headers)', {
+        fg: 'brightBlack',
+      })
       row++
     }
 
