@@ -41,7 +41,7 @@ async function signaturePreview(): Promise<string> {
   if (!text) return '(not set)'
   const lines = text.split('\n')
   const first = lines.find((l) => l.trim().length > 0) ?? ''
-  const truncated = first.length > 40 ? `${first.slice(0, 39)}…` : first
+  const truncated = first.length > 40 ? `${first.slice(0, 37)}...` : first
   return lines.length > 1 ? `${truncated}  (${lines.length} lines)` : truncated
 }
 
@@ -193,7 +193,7 @@ export class SetupScreen implements Screen {
 
   private async performCacheReset(): Promise<void> {
     this.confirmingReset = false
-    this.statusMessage = 'Clearing cache…'
+    this.statusMessage = 'Clearing cache...'
     this.statusIsError = false
     this.ctx?.invalidate()
     try {
