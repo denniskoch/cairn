@@ -4,8 +4,8 @@ import { STATUS_BAR_CHROME } from '../surface/types'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
 const SIGNATURE_KEY = 'signature.text'
-const STATUS_FG_OK: Attrs = { fg: 'yellow' }
-const STATUS_FG_ERR: Attrs = { fg: 'red' }
+const STATUS_FG_OK: Attrs = {}
+const STATUS_FG_ERR: Attrs = { bold: true }
 
 /** Minimal multi-line text editor for the user's signature. Same key
  * vocabulary as ComposeScreen's body field (Ctrl+X save, Ctrl+C

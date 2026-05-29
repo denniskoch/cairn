@@ -178,7 +178,9 @@ export class MainMenuScreen implements Screen {
         s.rows - 3 - STATUS_BAR_CHROME,
         2,
         this.statusMessage,
-        this.statusIsError ? { fg: 'red' } : { fg: 'yellow' },
+        // Bold for errors (draws attention); plain for ok. The status
+        // message text itself names the state — no colour key needed.
+        this.statusIsError ? { bold: true } : {},
       )
     }
 

@@ -269,9 +269,12 @@ export class SetupScreen implements Screen {
     // 2-line keymenu, matching what MainMenuScreen does.
     if (this.statusMessage) {
       const statusRow = s.rows - 3 - STATUS_BAR_CHROME
+      // Monochrome: errors get inverse+bold to stand out as a banner;
+      // ok-status (confirmation prompts, "Saved." feedback) is just
+      // bold. The message text names the state.
       const attrs: Attrs = this.statusIsError
-        ? { fg: 'red', bold: true }
-        : { fg: 'yellow', bold: true }
+        ? { inverse: true, bold: true }
+        : { bold: true }
       s.text(statusRow, indentCol, this.statusMessage.slice(0, s.cols - indentCol - 2), attrs)
     }
 

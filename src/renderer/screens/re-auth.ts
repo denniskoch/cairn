@@ -4,8 +4,8 @@ import { STATUS_BAR_CHROME } from '../surface/types'
 import { ConfirmScreen } from './confirm'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
-const STATUS_FG_OK: Attrs = { fg: 'yellow' }
-const STATUS_FG_ERR: Attrs = { fg: 'red' }
+const STATUS_FG_OK: Attrs = {}
+const STATUS_FG_ERR: Attrs = { bold: true }
 
 export class ReAuthScreen implements Screen {
   private ctx: ScreenContext | null = null
@@ -57,7 +57,7 @@ export class ReAuthScreen implements Screen {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
       const col = Math.max(2, Math.floor((s.cols - line.length) / 2))
-      const attrs: Attrs = i === 0 ? { fg: 'yellow', bold: true } : {}
+      const attrs: Attrs = i === 0 ? { bold: true } : {}
       s.text(startRow + i, col, line, attrs)
     }
 

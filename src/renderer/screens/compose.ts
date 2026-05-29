@@ -17,9 +17,9 @@ export interface ReplyContext {
 
 const HEADER_LABEL_WIDTH = 9 // "Subject: ".length
 const FIELDS: Field[] = ['to', 'cc', 'bcc', 'subject', 'body']
-const LABEL_ATTRS: Attrs = { fg: 'cyan', bold: true }
-const STATUS_FG_OK: Attrs = { fg: 'yellow' }
-const STATUS_FG_ERR: Attrs = { fg: 'red' }
+const LABEL_ATTRS: Attrs = { bold: true }
+const STATUS_FG_OK: Attrs = {}
+const STATUS_FG_ERR: Attrs = { bold: true }
 
 export class ComposeScreen implements Screen {
   private to = ''
@@ -623,7 +623,9 @@ export class ComposeScreen implements Screen {
    * "chip" effect without inventing new surface primitives. The split
    * is on , or ; — same separators commitAddressSeparator inserts. */
   private drawAddressLine(s: Surface, row: number, startCol: number, value: string): void {
-    const chipAttrs: Attrs = { bold: true, fg: 'cyan' }
+    // Committed address chips — bold to distinguish from the
+    // actively-typed segment that follows the last separator.
+    const chipAttrs: Attrs = { bold: true }
     const maxLen = s.cols - startCol
     const truncated = value.slice(0, maxLen)
 

@@ -139,16 +139,14 @@ export class FolderlistScreen implements Screen {
     s.text(0, 1, title.slice(0, s.cols - 4), { inverse: true, bold: true })
     drawSyncIndicator(s)
 
-    // Error banner (between header and folder list when present)
+    // Error banner (between header and folder list when present).
+    // Inverse band keeps it visually distinct without leaving the
+    // theme's foreground colour.
     const startRow = this.error ? 3 : 2
     if (this.error) {
-      s.fill(1, 0, s.cols, ' ', { bg: 'red', fg: 'white' })
+      s.fill(1, 0, s.cols, ' ', { inverse: true })
       const msg = `Error: ${this.error}  —  Press L to retry`
-      s.text(1, 1, msg.slice(0, s.cols - 2), {
-        bg: 'red',
-        fg: 'white',
-        bold: true,
-      })
+      s.text(1, 1, msg.slice(0, s.cols - 2), { inverse: true, bold: true })
     }
 
     // Rows, one per line

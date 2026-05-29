@@ -5,8 +5,8 @@ import { STATUS_BAR_CHROME } from '../surface/types'
 import { drawIndicator as drawSyncIndicator } from '../sync-status'
 import type { HelpInfo, Screen, ScreenContext } from './types'
 
-const STATUS_FG_OK: Attrs = { fg: 'yellow' }
-const STATUS_FG_ERR: Attrs = { fg: 'red' }
+const STATUS_FG_OK: Attrs = {}
+const STATUS_FG_ERR: Attrs = { bold: true }
 
 export class AttachmentPickerScreen implements Screen {
   private cursor = 0

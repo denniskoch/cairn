@@ -185,20 +185,16 @@ export class IndexScreen implements Screen {
 
     const startRow = this.error ? 3 : 2
     if (this.error) {
-      s.fill(1, 0, s.cols, ' ', { bg: 'red', fg: 'white' })
+      s.fill(1, 0, s.cols, ' ', { inverse: true })
       const msg = `Error: ${this.error}  —  Press L to retry`
-      s.text(1, 1, msg.slice(0, s.cols - 2), {
-        bg: 'red',
-        fg: 'white',
-        bold: true,
-      })
+      s.text(1, 1, msg.slice(0, s.cols - 2), { inverse: true, bold: true })
     }
 
     const visibleRows = s.rows - startRow - 2 - STATUS_BAR_CHROME // 2 rows reserved for status bar
     this.adjustScroll(visibleRows)
 
     if (this.loading && this.messages.length === 0) {
-      s.text(startRow, 2, 'Loading...', { fg: 'yellow' })
+      s.text(startRow, 2, 'Loading...')
     } else if (this.messages.length === 0 && !this.error) {
       s.text(startRow, 2, '(no messages)', { fg: 'brightBlack' })
     }

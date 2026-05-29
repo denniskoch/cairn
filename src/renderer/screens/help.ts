@@ -48,7 +48,7 @@ export class HelpScreen implements Screen {
       s.text(startRow, 2, '(no help for this screen)', { fg: 'brightBlack' })
     }
 
-    const keyAttrs: Attrs = { bold: true, fg: 'cyan' }
+    const keyAttrs: Attrs = { bold: true }
     for (let i = 0; i < visible; i++) {
       const idx = this.scrollOffset + i
       if (idx >= this.info.entries.length) break

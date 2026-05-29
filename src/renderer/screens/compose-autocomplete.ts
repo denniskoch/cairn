@@ -133,7 +133,9 @@ export class AddressAutocompleteManager {
    * can tell where each candidate came from. */
   render(s: Surface, topRow: number): void {
     const MAX_VISIBLE = 6
-    const headerAttrs: Attrs = { fg: 'cyan', bold: true }
+    // Monochrome: title row uses inverse+bold to read as a banner;
+    // muted email column uses brightBlack (allowed for de-emphasis).
+    const headerAttrs: Attrs = { inverse: true, bold: true }
     const cursorAttrs: Attrs = { inverse: true }
     const muted: Attrs = { fg: 'brightBlack' }
 
@@ -187,10 +189,11 @@ export class AddressAutocompleteManager {
     }
 
     // Footer rule closes the dropdown so it doesn't blur into the body
-    // underneath.
+    // underneath. Muted (brightBlack) so it recedes against the body
+    // text without leaving the foreground colour.
     const footerRow = topRow + 1 + visible.length
     if (footerRow < maxRow) {
-      s.fill(footerRow, 0, s.cols, '─', { fg: 'cyan' })
+      s.fill(footerRow, 0, s.cols, '─', { fg: 'brightBlack' })
     }
   }
 }

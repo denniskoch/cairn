@@ -96,13 +96,12 @@ export class ViewScreen implements Screen {
     if (this.error) {
       s.fill(0, 0, s.cols, ' ', { inverse: true })
       s.text(0, 1, 'Cairn — Message', { inverse: true, bold: true })
-      s.fill(1, 0, s.cols, ' ', { bg: 'red', fg: 'white' })
+      // Monochrome error banner: full-width inverse band, bold text.
+      // Reads as "this row is important" without leaving the theme's
+      // foreground colour.
+      s.fill(1, 0, s.cols, ' ', { inverse: true })
       const msg = `Error: ${this.error}  —  Press L to retry`
-      s.text(1, 1, msg.slice(0, s.cols - 2), {
-        bg: 'red',
-        fg: 'white',
-        bold: true,
-      })
+      s.text(1, 1, msg.slice(0, s.cols - 2), { inverse: true, bold: true })
       this.renderStatusBar(s)
       s.flush()
       return
@@ -111,7 +110,7 @@ export class ViewScreen implements Screen {
     if (this.loading || !this.message) {
       s.fill(0, 0, s.cols, ' ', { inverse: true })
       s.text(0, 1, 'Cairn — Message', { inverse: true, bold: true })
-      s.text(2, 2, 'Loading message...', { fg: 'yellow' })
+      s.text(2, 2, 'Loading message...')
       this.renderStatusBar(s)
       s.flush()
       return
@@ -133,7 +132,7 @@ export class ViewScreen implements Screen {
     // toggles them on, live in the scrollable region below.
     let row = 2
     const briefEntries = this.briefHeaderEntries(m)
-    const labelAttrs: Attrs = { bold: true, fg: 'cyan' }
+    const labelAttrs: Attrs = { bold: true }
     for (const [label, value] of briefEntries) {
       if (row >= s.rows - 3 - STATUS_BAR_CHROME) break
       s.text(row, 2, `${label}:`.padEnd(10), labelAttrs)
@@ -166,11 +165,12 @@ export class ViewScreen implements Screen {
       const lineIdx = this.scrollOffset + i
       if (lineIdx >= this.scrollLines.length) break
       const line = this.scrollLines[lineIdx]
-      // Header lines (when fullHeaders is on) are coloured to stand
-      // apart from body. We detect them by checking against the
-      // count we know is at the head of scrollLines.
+      // Header lines (when fullHeaders is on) are bolded so they stay
+      // distinct from body text without leaving the theme's single
+      // foreground colour. We detect them by checking against the count
+      // we know is at the head of scrollLines.
       const isHeaderLine = this.fullHeaders && lineIdx < this.fullHeaderLineCount
-      const attrs: Attrs | undefined = isHeaderLine ? { fg: 'cyan' } : undefined
+      const attrs: Attrs | undefined = isHeaderLine ? { bold: true } : undefined
       s.text(scrollStartRow + i, 2, line.slice(0, s.cols - 4), attrs)
     }
 
@@ -189,9 +189,10 @@ export class ViewScreen implements Screen {
     // above what statusBar fills.
     if (this.inviteStatus) {
       const statusRow = s.rows - 3 - STATUS_BAR_CHROME
-      const attrs: Attrs = this.inviteStatus.isError
-        ? { fg: 'red', bold: true }
-        : { fg: 'green', bold: true }
+      // Monochrome: bold for errors (draws attention), plain for success.
+      // The message text itself ("RSVP failed: ..." vs "Response sent: ...")
+      // communicates state without a colour key.
+      const attrs: Attrs = this.inviteStatus.isError ? { bold: true } : {}
       s.text(
         statusRow,
         2,
@@ -243,9 +244,12 @@ export class ViewScreen implements Screen {
     startRow: number,
     meeting: import('../../shared/mail').MeetingInfo,
   ): number {
-    const ruleAttrs: Attrs = { fg: 'cyan' }
-    const labelAttrs: Attrs = { bold: true, fg: 'cyan' }
-    const titleAttrs: Attrs = { bold: true, fg: 'magenta' }
+    // Monochrome: structural rules use brightBlack to recede; label
+    // emphasis is bold-only; the meeting title gets inverse-bold so it
+    // reads as a banner without leaving the foreground colour.
+    const ruleAttrs: Attrs = { fg: 'brightBlack' }
+    const labelAttrs: Attrs = { bold: true }
+    const titleAttrs: Attrs = { bold: true, inverse: true }
     const keyAttrs: Attrs = { inverse: true, bold: true }
 
     const kindLabel =
@@ -579,25 +583,24 @@ function addrLabel(a: { email: string; name?: string }): string {
   return a.name ? `${a.name} <${a.email}>` : a.email
 }
 
-/** Color/weight for a meeting response state. Green/red/yellow match
- * the universal traffic-light convention; un-responded gets bright
- * yellow so it pulls attention until the user acts. */
+/** Emphasis for a meeting response state. Monochrome: bold for
+ * responded states (Accepted / Tentative / Declined / Organizer) and
+ * bold+inverse for un-responded so it visibly pulls attention until the
+ * user acts. The text itself ("ACCEPTED" vs "DECLINED" etc.) names the
+ * state — no colour key needed. */
 function statusAttrs(
   response: import('../../shared/mail').MeetingResponse,
 ): Attrs {
   switch (response) {
     case 'accepted':
-      return { bold: true, fg: 'green' }
     case 'tentative':
-      return { bold: true, fg: 'yellow' }
     case 'declined':
-      return { bold: true, fg: 'red' }
     case 'organizer':
-      return { bold: true, fg: 'cyan' }
+      return { bold: true }
     case 'none':
     case 'notResponded':
     default:
-      return { bold: true, fg: 'brightYellow' }
+      return { bold: true, inverse: true }
   }
 }
 
